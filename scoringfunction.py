@@ -1,18 +1,25 @@
-#creating composite scores for each section
-df_merged["school_composite"] = (
-    df_merged["school_score_norm"] * 0.35 + # these weights can change but it's based on how important each factor may be for families
-    df_merged["grad_rate_norm"]    * 0.20 +
-    df_merged["ccr_norm"]          * 0.25 +
-    df_merged["avg_sat_norm"]      * 0.10 +
-    df_merged["avg_act_norm"]      * 0.10
-)
+import pandas as pd
 
-df_merged["crime_composite"] = (
-    df_merged["family_violence_norm"] * 0.35 +
-    df_merged["sexual_assault_norm"]  * 0.30 +
-    df_merged["robbery_norm"]         * 0.25 +
-    df_merged["larcency_norm"]         * 0.07 +
-    df_merged["arson_norm"]           * 0.03
-)
 
-df_merged["price_composite"] = df_merged["price_norm"]
+def add_composite_scores(df_merged: pd.DataFrame) -> pd.DataFrame:
+    """Add school, crime, and price composite scores (0–1 scale)."""
+    df = df_merged.copy()
+
+    df["school_composite"] = (
+        df["school_score_norm"] * 0.35
+        + df["grad_rate_norm"] * 0.20
+        + df["ccr_norm"] * 0.25
+        + df["avg_sat_norm"] * 0.10
+        + df["avg_act_norm"] * 0.10
+    )
+
+    df["crime_composite"] = (
+        df["family_violence_norm"] * 0.35
+        + df["sexual_assault_norm"] * 0.30
+        + df["robbery_norm"] * 0.25
+        + df["larcency_norm"] * 0.07
+        + df["arson_norm"] * 0.03
+    )
+
+    df["price_composite"] = df["price_norm"]
+    return df

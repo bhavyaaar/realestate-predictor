@@ -1,10 +1,10 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import os
 
 # load data set
-df_zillow_city = pd.read_csv("/content/drive/MyDrive/Capstone Project/Backend Datasets/Zillow/zillow_city.csv")
+file_path = os.path.join("data", "zillow_city.csv")
+df_zillow_city = pd.read_csv(file_path)
 
 # keep only rows where RegionName contains "Collin County" and drop rest
 df_home_data = df_zillow_city[df_zillow_city["CountyName"].str.contains("Collin County", case=False, na=False)]

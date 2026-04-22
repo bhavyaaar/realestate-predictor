@@ -30,8 +30,8 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center">
-        <div className="text-blue-100">Loading your profile...</div>
+      <div className="min-h-screen bg-[#f5f0e8] flex items-center justify-center">
+        <div className="text-stone-500">Loading your profile...</div>
       </div>
     );
   }
@@ -41,7 +41,7 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
+    <div className="min-h-screen bg-[#f5f0e8]">
       <Header currentPage={currentPage} onNavigate={handleNavigate} />
       
       {currentPage === "estimator" && <CostEstimator />}

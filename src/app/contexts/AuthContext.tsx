@@ -440,12 +440,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
     localStorage.removeItem("collin_county_guest");
     setUser(null);
     setSavedHouses([]);
     setSavedInfo([]);
     setIsGuest(false);
+
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
   };
 
   const resetAuthState = async () => {
@@ -483,9 +488,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = async (updates: Partial<User>): Promise<boolean> => {
     if (!user) return false;
 
+    const nextAge =
+      typeof updates.age === "number" && Number.isFinite(updates.age)
+        ? Math.max(18, Math.min(120, updates.age))
+        : user.age;
+
     const payload = {
       name: updates.name ?? user.name,
-      age: updates.age ?? user.age,
+      age: nextAge,
       is_first_time_buyer: updates.isFirstTimeBuyer ?? user.isFirstTimeBuyer,
     };
 
@@ -494,14 +504,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .update(payload)
       .eq("id", user.id)
       .select("*")
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      alert(error.message);
+    if (!error && data) {
+      setUser(mapProfileToUser(data, user.email));
+      return true;
+    }
+
+    const { data: upsertedData, error: upsertError } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: user.id,
+          email: user.email,
+          ...payload,
+        },
+        { onConflict: "id" },
+      )
+      .select("*")
+      .maybeSingle();
+
+    if (upsertError || !upsertedData) {
+      alert(upsertError?.message || error?.message || "Could not save your profile.");
       return false;
     }
 
-    setUser(mapProfileToUser(data, user.email));
+    setUser(mapProfileToUser(upsertedData, user.email));
     return true;
   };
 

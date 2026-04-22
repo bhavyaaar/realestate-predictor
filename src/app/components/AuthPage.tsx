@@ -5,7 +5,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Checkbox } from "./ui/checkbox";
-import { UserPlus, LogIn, UserCircle } from "lucide-react";
+import { Home, UserPlus, LogIn, UserCircle } from "lucide-react";
 
 export function AuthPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -50,15 +50,20 @@ export function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-white">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center text-gray-900">
-            {mode === "login" ? "Welcome Back" : "Create Account"}
-          </CardTitle>
-          <p className="text-center text-gray-600 text-sm">
+    <div className="min-h-screen bg-[#f5f0e8] flex items-center justify-center p-4">
+      <Card className="w-full max-w-md bg-white border border-stone-300 shadow-xl">
+        <CardHeader className="space-y-3 pb-4">
+          <div className="flex items-center justify-center gap-3 mb-1">
+            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-stone-700 to-amber-800 flex items-center justify-center">
+              <Home className="h-6 w-6 text-white" />
+            </div>
+            <CardTitle className="text-2xl text-stone-900">
+              {mode === "login" ? "Real Estate Analyzer" : "Create Account"}
+            </CardTitle>
+          </div>
+          <p className="text-center text-stone-500 text-sm border-t border-stone-100 pt-3">
             {mode === "login"
-              ? "Sign in to access Cost Estimator and Opportunity Chatbot"
+              ? "Sign in to access Price Predictor and Opportunity Chatbot"
               : "Create your account to save estimates and personal notes"}
           </p>
         </CardHeader>
@@ -66,17 +71,18 @@ export function AuthPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === "signup" && (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input
-                    id="name"
-                    type="text"
-                    placeholder="John Doe"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="John Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="border-stone-300 bg-stone-50"
+                required
+              />
+            </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="age">Age</Label>
@@ -88,6 +94,7 @@ export function AuthPage() {
                     max="120"
                     value={age}
                     onChange={(e) => setAge(e.target.value)}
+                    className="border-stone-300 bg-stone-50"
                     required
                   />
                 </div>
@@ -102,6 +109,7 @@ export function AuthPage() {
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                className="border-stone-300 bg-stone-50"
                 required
               />
             </div>
@@ -114,6 +122,7 @@ export function AuthPage() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className="border-stone-300 bg-stone-50"
                 required
               />
             </div>
@@ -133,7 +142,7 @@ export function AuthPage() {
 
             <Button
               type="submit"
-              className="w-full bg-blue-900 hover:bg-blue-800"
+              className="w-full bg-stone-800 hover:bg-stone-700"
               disabled={loading}
             >
               {loading ? (
@@ -175,7 +184,7 @@ export function AuthPage() {
 
           <Button
             variant="outline"
-            className="w-full"
+            className="w-full border-stone-300 hover:bg-stone-50"
             onClick={continueAsGuest}
           >
             <UserCircle className="h-4 w-4 mr-2" />
@@ -184,23 +193,23 @@ export function AuthPage() {
 
           <div className="text-center text-sm">
             {mode === "login" ? (
-              <p className="text-gray-600">
+              <p className="text-stone-500">
                 Do not have an account?{" "}
                 <button
                   type="button"
                   onClick={() => setMode("signup")}
-                  className="text-blue-900 hover:underline font-medium"
+                  className="text-stone-700 hover:underline font-semibold"
                 >
                   Sign up
                 </button>
               </p>
             ) : (
-              <p className="text-gray-600">
+              <p className="text-stone-500">
                 Already have an account?{" "}
                 <button
                   type="button"
                   onClick={() => setMode("login")}
-                  className="text-blue-900 hover:underline font-medium"
+                  className="text-stone-700 hover:underline font-semibold"
                 >
                   Sign in
                 </button>

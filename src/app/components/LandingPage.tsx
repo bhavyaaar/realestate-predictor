@@ -10,13 +10,13 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 py-20">
+      <section className="relative overflow-hidden bg-gradient-to-br from-stone-100 via-amber-50 to-stone-100 py-20">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto text-center">
-            <div className="inline-block mb-4 px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm">
+            <div className="inline-block mb-4 px-4 py-2 bg-stone-200 text-stone-700 rounded-full text-sm">
               Advanced Predictive Analytics
             </div>
-            <h1 className="text-5xl md:text-6xl mb-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+            <h1 className="text-5xl md:text-6xl mb-6 bg-gradient-to-r from-stone-800 via-amber-800 to-stone-700 bg-clip-text text-transparent">
               Make Informed Real Estate Decisions
             </h1>
             <p className="text-xl text-gray-700 mb-8 leading-relaxed">
@@ -27,7 +27,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
               <Button
                 size="lg"
                 onClick={() => onNavigate("estimator")}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 gap-2"
+                className="bg-stone-800 hover:bg-stone-700 gap-2"
               >
                 <TrendingUp className="h-5 w-5" />
                 Try Cost Estimator
@@ -46,13 +46,13 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
         </div>
         
         {/* Decorative Elements */}
-        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
-        <div className="absolute top-40 right-10 w-72 h-72 bg-purple-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-8 left-1/2 w-72 h-72 bg-pink-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
+        <div className="absolute top-20 left-10 w-72 h-72 bg-amber-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
+        <div className="absolute top-40 right-10 w-72 h-72 bg-stone-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-8 left-1/2 w-72 h-72 bg-amber-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
       </section>
 
       {/* What Makes Us Different */}
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-[#f5f0e8]">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl mb-4">Why Choose RE Insights?</h2>
@@ -62,10 +62,10 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            <Card className="border-2 hover:border-blue-400 transition-all hover:shadow-lg">
+            <Card className="border-2 hover:border-amber-600 transition-all hover:shadow-lg">
               <CardHeader>
-                <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center mb-4">
-                  <Brain className="h-6 w-6 text-blue-600" />
+                <div className="h-12 w-12 rounded-lg bg-stone-200 flex items-center justify-center mb-4">
+                  <Brain className="h-6 w-6 text-stone-700" />
                 </div>
                 <CardTitle>Predictive Models</CardTitle>
                 <CardDescription>
@@ -74,10 +74,10 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
               </CardHeader>
             </Card>
 
-            <Card className="border-2 hover:border-purple-400 transition-all hover:shadow-lg">
+            <Card className="border-2 hover:border-amber-500 transition-all hover:shadow-lg">
               <CardHeader>
-                <div className="h-12 w-12 rounded-lg bg-purple-100 flex items-center justify-center mb-4">
-                  <Calculator className="h-6 w-6 text-purple-600" />
+                <div className="h-12 w-12 rounded-lg bg-amber-100 flex items-center justify-center mb-4">
+                  <Calculator className="h-6 w-6 text-amber-700" />
                 </div>
                 <CardTitle>Opportunity Cost Analysis</CardTitle>
                 <CardDescription>
@@ -86,10 +86,10 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
               </CardHeader>
             </Card>
 
-            <Card className="border-2 hover:border-pink-400 transition-all hover:shadow-lg">
+            <Card className="border-2 hover:border-stone-400 transition-all hover:shadow-lg">
               <CardHeader>
-                <div className="h-12 w-12 rounded-lg bg-pink-100 flex items-center justify-center mb-4">
-                  <MapPin className="h-6 w-6 text-pink-600" />
+                <div className="h-12 w-12 rounded-lg bg-stone-100 flex items-center justify-center mb-4">
+                  <MapPin className="h-6 w-6 text-stone-600" />
                 </div>
                 <CardTitle>Regional Insights</CardTitle>
                 <CardDescription>
@@ -102,7 +102,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
       </section>
 
       {/* Key Features */}
-      <section className="py-20 bg-gray-50">
+      <section className="py-20 bg-white">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl mb-4">Powerful Features</h2>
@@ -115,7 +115,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
             <Card className="bg-white">
               <CardHeader>
                 <CardTitle className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                  <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-stone-700 to-stone-800 flex items-center justify-center">
                     <TrendingUp className="h-5 w-5 text-white" />
                   </div>
                   Multi-Factor Cost Estimator
@@ -124,19 +124,19 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
               <CardContent>
                 <ul className="space-y-2 text-gray-700">
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 mt-1">✓</span>
+                    <span className="text-stone-600 mt-1">✓</span>
                     <span>Property features (size, bedrooms, bathrooms, age)</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 mt-1">✓</span>
+                    <span className="text-stone-600 mt-1">✓</span>
                     <span>Location-based pricing with regional trends</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 mt-1">✓</span>
+                    <span className="text-stone-600 mt-1">✓</span>
                     <span>Condition assessment and upgrades impact</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 mt-1">✓</span>
+                    <span className="text-stone-600 mt-1">✓</span>
                     <span>Market timing and seasonal adjustments</span>
                   </li>
                 </ul>
@@ -146,7 +146,7 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
             <Card className="bg-white">
               <CardHeader>
                 <CardTitle className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                  <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-amber-700 to-amber-800 flex items-center justify-center">
                     <Calculator className="h-5 w-5 text-white" />
                   </div>
                   Opportunity Cost Calculator
@@ -155,19 +155,19 @@ export function LandingPage({ onNavigate }: LandingPageProps) {
               <CardContent>
                 <ul className="space-y-2 text-gray-700">
                   <li className="flex items-start gap-2">
-                    <span className="text-purple-600 mt-1">✓</span>
+                    <span className="text-amber-700 mt-1">✓</span>
                     <span>Buy vs. Rent scenario comparison</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-purple-600 mt-1">✓</span>
+                    <span className="text-amber-700 mt-1">✓</span>
                     <span>Wait vs. Buy now timing analysis</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-purple-600 mt-1">✓</span>
+                    <span className="text-amber-700 mt-1">✓</span>
                     <span>Side-by-side property comparisons</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-purple-600 mt-1">✓</span>
+                    <span className="text-amber-700 mt-1">✓</span>
                     <span>Investment ROI projections</span>
                   </li>
                 </ul>

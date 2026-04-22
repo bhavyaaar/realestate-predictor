@@ -6,6 +6,7 @@ import { Badge } from "./ui/badge";
 import { Bot, MessageSquare, Plus, Send, Trash2, User } from "lucide-react";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Slider } from "./ui/slider";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 
@@ -43,12 +44,45 @@ type OpportunityResult = {
   tone: "positive" | "warning" | "neutral";
 };
 
+type PriorityKey = "schoolQuality" | "safety" | "affordability";
+
+type PriorityWeights = Record<PriorityKey, number>;
+
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 const CHAT_STORAGE_KEY = "homescope_opportunity_chat_sessions";
 
 const assistantIntro =
-  "Hi, I am your opportunity advisor. Tell me your budget, timeline, location, and whether you are deciding between buying, waiting, or renting. I will break down tradeoffs and next best actions.";
+  "Welcome to Oppurtunity Cost Chatbot!";
+
+const priorityKeys: PriorityKey[] = ["schoolQuality", "safety", "affordability"];
+
+const priorityDetails: Record<PriorityKey, { label: string }> = {
+  schoolQuality: {
+    label: "School quality",
+  },
+  safety: {
+    label: "Safety (low crime)",
+  },
+  affordability: {
+    label: "Home affordability",
+  },
+};
+
+const districtOptions = [
+  "Frisco ISD",
+  "Plano ISD",
+  "McKinney ISD",
+  "Allen ISD",
+  "Prosper ISD",
+  "Wylie ISD",
+];
+
+const defaultPriorityWeights: PriorityWeights = {
+  schoolQuality: 40,
+  safety: 35,
+  affordability: 25,
+};
 
 const createSession = (): ChatSession => ({
   id: crypto.randomUUID(),
@@ -84,6 +118,52 @@ const formatCurrencyInput = (value: string) => {
 
 const parseCurrency = (value: string) => parseInt(value.replace(/,/g, ""), 10) || 0;
 
+function rebalancePriorityWeights(
+  previous: PriorityWeights,
+  changedKey: PriorityKey,
+  nextValue: number,
+): PriorityWeights {
+  const clamped = Math.max(0, Math.min(100, Math.round(nextValue)));
+  const otherKeys = priorityKeys.filter((key) => key !== changedKey);
+  const remaining = 100 - clamped;
+  const otherTotal = otherKeys.reduce((sum, key) => sum + previous[key], 0);
+
+  const next: PriorityWeights = {
+    ...previous,
+    [changedKey]: clamped,
+  };
+
+  if (otherTotal === 0) {
+    const baseShare = Math.floor(remaining / otherKeys.length);
+    let assigned = 0;
+
+    otherKeys.forEach((key, index) => {
+      const share = index === otherKeys.length - 1 ? remaining - assigned : baseShare;
+      next[key] = share;
+      assigned += share;
+    });
+
+    return next;
+  }
+
+  let assigned = 0;
+  otherKeys.forEach((key, index) => {
+    const scaledValue = index === otherKeys.length - 1
+      ? remaining - assigned
+      : Math.max(0, Math.round((previous[key] / otherTotal) * remaining));
+    next[key] = scaledValue;
+    assigned += scaledValue;
+  });
+
+  const total = priorityKeys.reduce((sum, key) => sum + next[key], 0);
+  if (total !== 100) {
+    const adjustmentKey = otherKeys[otherKeys.length - 1] ?? changedKey;
+    next[adjustmentKey] += 100 - total;
+  }
+
+  return next;
+}
+
 export function OpportunityCostCalculator() {
   const { saveInfo, user, isGuest } = useAuth();
   const [chatStorageMode, setChatStorageMode] = useState<"supabase" | "local">("local");
@@ -107,6 +187,9 @@ export function OpportunityCostCalculator() {
   const [saveMessage, setSaveMessage] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [validationMessage, setValidationMessage] = useState("");
+  const [priorityWeights, setPriorityWeights] = useState<PriorityWeights>(defaultPriorityWeights);
+  const [primaryDistrict, setPrimaryDistrict] = useState("Frisco ISD");
+  const [secondaryDistrict, setSecondaryDistrict] = useState("Plano ISD");
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
   const cityPremiums: Record<string, number> = {
@@ -274,6 +357,10 @@ export function OpportunityCostCalculator() {
   const createNewChat = async () => {
     const next = createSession();
 
+    setSessions((prev) => [next, ...prev]);
+    setActiveSessionId(next.id);
+    setDraft("");
+
     if (user && !isGuest && chatStorageMode === "supabase") {
       const { error: sessionError } = await supabase.from("chat_sessions").insert({
         id: next.id,
@@ -305,9 +392,11 @@ export function OpportunityCostCalculator() {
         }
       }
     }
+  };
 
-    setSessions((prev) => [next, ...prev]);
-    setActiveSessionId(next.id);
+  const handleSelectSession = (id: string) => {
+    setActiveSessionId(id);
+    setDraft("");
   };
 
   const deleteChat = async (id: string) => {
@@ -458,54 +547,58 @@ export function OpportunityCostCalculator() {
     window.dispatchEvent(new CustomEvent("homescope:navigate", { detail: "profile" }));
   };
 
-  const sendMessage = () => {
-    if (!draft.trim() || !activeSession) return;
+  const totalPriorityWeight = useMemo(
+    () => priorityKeys.reduce((sum, key) => sum + priorityWeights[key], 0),
+    [priorityWeights],
+  );
+
+  const handlePriorityChange = (key: PriorityKey, nextValue: number[]) => {
+    const value = nextValue[0] ?? priorityWeights[key];
+    setPriorityWeights((previous) => rebalancePriorityWeights(previous, key, value));
+  };
+
+  const sendMessage = (messageText = draft) => {
+    const trimmed = messageText.trim();
+    const targetSessionId = activeSessionId || sessions[0]?.id;
+    if (!trimmed || !targetSessionId) return;
+
+    const currentSession = sessions.find((session) => session.id === targetSessionId) || sessions[0];
+    if (!currentSession) return;
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: draft.trim(),
+      content: trimmed,
       timestamp: new Date().toISOString(),
     };
 
-    const sessionTitle = activeSession.messages.length <= 1 ? draft.slice(0, 40) : activeSession.title;
-
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === activeSession.id
-          ? {
-              ...session,
-              title: sessionTitle || session.title,
-              updatedAt: new Date().toISOString(),
-              messages: [...session.messages, userMessage],
-            }
-          : session,
-      ),
-    );
-    setDraft("");
-    setIsTyping(false);
+    const sessionTitle = currentSession.messages.length <= 1 ? trimmed.slice(0, 40) : currentSession.title;
 
     const placeholderReply: ChatMessage = {
       id: crypto.randomUUID(),
       role: "assistant",
-      content: "Frontend note: chatbot response content is disabled in this branch. Backend integration will provide live responses.",
+      content: "Your message has been received. This is a frontend-only build — live opportunity analysis will be returned once the backend is connected.",
       timestamp: new Date().toISOString(),
     };
 
     // TODO: Replace this placeholder with a real backend API call during chatbot integration.
     setSessions((prev) => {
+      const now = new Date().toISOString();
       const next = prev.map((session) =>
-        session.id === activeSession.id
+        session.id === targetSessionId
           ? {
               ...session,
-              updatedAt: new Date().toISOString(),
-              messages: [...session.messages, placeholderReply],
+              title: sessionTitle || session.title,
+              updatedAt: now,
+              messages: [...session.messages, userMessage, placeholderReply],
             }
           : session,
       );
       ensureActiveSessionId(next);
       return next;
     });
+    setDraft("");
+    setIsTyping(false);
 
     if (user && !isGuest && chatStorageMode === "supabase") {
       void (async () => {
@@ -515,7 +608,7 @@ export function OpportunityCostCalculator() {
         const { error: updateError } = await supabase
           .from("chat_sessions")
           .update({ title: nextTitle, updated_at: now })
-          .eq("id", activeSession.id)
+          .eq("id", targetSessionId)
           .eq("user_id", user.id);
 
         if (updateError) {
@@ -526,7 +619,7 @@ export function OpportunityCostCalculator() {
         const { error: insertError } = await supabase.from("chat_messages").insert([
           {
             id: userMessage.id,
-            session_id: activeSession.id,
+            session_id: targetSessionId,
             user_id: user.id,
             role: userMessage.role,
             content: userMessage.content,
@@ -534,7 +627,7 @@ export function OpportunityCostCalculator() {
           },
           {
             id: placeholderReply.id,
-            session_id: activeSession.id,
+            session_id: targetSessionId,
             user_id: user.id,
             role: placeholderReply.role,
             content: placeholderReply.content,
@@ -549,120 +642,136 @@ export function OpportunityCostCalculator() {
     }
   };
 
+  const submitDraftMessage = () => {
+    sendMessage(draft);
+  };
+
+  const handleCompareDistricts = () => {
+    const comparePrompt = [
+      `Compare ${primaryDistrict} vs ${secondaryDistrict}.`,
+      `School quality ${priorityWeights.schoolQuality}%.`,
+      `Safety ${priorityWeights.safety}%.`,
+      `Affordability ${priorityWeights.affordability}%.`,
+      "This is a frontend configuration request; backend scoring will be connected later.",
+    ].join(" ");
+
+    sendMessage(comparePrompt);
+  };
+
   return (
     <div className="min-h-screen bg-transparent p-4 md:p-6">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
-        <div className="space-y-4">
-          <Card className="bg-slate-900/70 border-slate-700">
-            <CardHeader className="space-y-3">
-              <CardTitle className="text-white">Collin County Opportunity Filters</CardTitle>
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <div className="space-y-4 self-start">
+          <Card className="rounded-[24px] bg-white border border-stone-300 shadow-md">
+            <CardHeader className="space-y-2 pb-3">
+              <CardTitle className="text-stone-700 text-sm font-semibold tracking-wide uppercase">
+                Your Priorities (must = 100%)
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-slate-200">County</Label>
-                <div className="rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-white">Collin County, Texas</div>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-200">City</Label>
-                <Select value={opportunityInputs.city} onValueChange={(value) => handleInputChange("city", value)}>
-                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="plano">Plano</SelectItem>
-                    <SelectItem value="frisco">Frisco</SelectItem>
-                    <SelectItem value="mckinney">McKinney</SelectItem>
-                    <SelectItem value="allen">Allen</SelectItem>
-                    <SelectItem value="prosper">Prosper</SelectItem>
-                    <SelectItem value="wylie">Wylie</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-200">Decision Type</Label>
-                <Select value={opportunityInputs.decisionType} onValueChange={(value) => handleInputChange("decisionType", value)}>
-                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="buy-vs-wait">Buy Now vs Wait</SelectItem>
-                    <SelectItem value="buy-vs-rent">Buy vs Rent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-200">Budget</Label>
-                <Input value={opportunityInputs.budget} onChange={(e) => handleInputChange("budget", e.target.value)} className="bg-slate-800 border-slate-700 text-white" placeholder="650,000" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-200">Target Purchase Price</Label>
-                <Input value={opportunityInputs.targetPrice} onChange={(e) => handleInputChange("targetPrice", e.target.value)} className="bg-slate-800 border-slate-700 text-white" placeholder="540,000" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-slate-200">Monthly Rent</Label>
-                <Input value={opportunityInputs.monthlyRent} onChange={(e) => handleInputChange("monthlyRent", e.target.value)} className="bg-slate-800 border-slate-700 text-white" placeholder="2,600" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label className="text-slate-200">Wait Months</Label>
-                  <Input value={opportunityInputs.waitMonths} onChange={(e) => handleInputChange("waitMonths", e.target.value)} className="bg-slate-800 border-slate-700 text-white" />
+            <CardContent className="space-y-4 pt-0">
+              {priorityKeys.map((key) => (
+                <div key={key} className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <Label className="text-base font-medium text-stone-800">{priorityDetails[key].label}</Label>
+                    <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">{priorityWeights[key]}%</Badge>
+                  </div>
+                  <Slider
+                    value={[priorityWeights[key]]}
+                    min={0}
+                    max={100}
+                    step={1}
+                    onValueChange={(value) => handlePriorityChange(key, value)}
+                    className="[&_[data-slot=slider-range]]:bg-stone-300 [&_[data-slot=slider-thumb]]:border-stone-300 [&_[data-slot=slider-thumb]]:bg-white [&_[data-slot=slider-track]]:bg-stone-100"
+                  />
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-200">Hold Years</Label>
-                  <Input value={opportunityInputs.holdYears} onChange={(e) => handleInputChange("holdYears", e.target.value)} className="bg-slate-800 border-slate-700 text-white" />
+              ))}
+
+              <div className="border-t border-stone-200 pt-3">
+                <div className="flex items-center justify-between text-stone-700">
+                  <span className="text-sm font-medium">Total</span>
+                  <span className="text-2xl font-semibold text-stone-800">{totalPriorityWeight}%</span>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label className="text-slate-200">Mortgage Rate (%)</Label>
-                <Input value={opportunityInputs.mortgageRate} onChange={(e) => handleInputChange("mortgageRate", e.target.value)} className="bg-slate-800 border-slate-700 text-white" />
-              </div>
-              {validationMessage && <p className="text-sm text-red-300">{validationMessage}</p>}
-              <Button onClick={calculateOpportunityCost} className="w-full bg-sky-600 hover:bg-sky-500">Calculate Opportunity Cost</Button>
-              {opportunityResult && (
-                <div
-                  className={`rounded-lg p-3 text-sm space-y-2 ${
-                    opportunityResult.tone === "positive"
-                      ? "bg-emerald-900/40 text-emerald-100 border border-emerald-700"
-                      : opportunityResult.tone === "warning"
-                        ? "bg-amber-900/35 text-amber-100 border border-amber-700"
-                        : "bg-slate-800 text-slate-100 border border-slate-700"
-                  }`}
-                >
-                  <p>Buy now monthly cost: ${opportunityResult.buyNowMonthlyCost.toLocaleString()}</p>
-                  <p>Wait strategy cost: ${opportunityResult.waitStrategyCost.toLocaleString()}</p>
-                  <p>Opportunity cost: ${opportunityResult.opportunityCost.toLocaleString()}</p>
-                  <p>{opportunityResult.recommendation}</p>
-                  <Button onClick={saveCurrentAnalysis} disabled={saveState === "saving"} className="w-full bg-blue-900 hover:bg-blue-800">
-                    {saveState === "saving" ? "Saving..." : saveState === "saved" ? "Saved" : "Save Result"}
-                  </Button>
-                  {saveState === "saved" && (
-                    <Button variant="outline" onClick={navigateToProfile} className="w-full">View Saved Results</Button>
-                  )}
-                  {saveMessage && <p className="text-xs text-sky-300">{saveMessage}</p>}
-                </div>
-              )}
+
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-900/70 border-slate-700">
-            <CardHeader className="space-y-3">
-              <CardTitle className="text-white flex items-center justify-between">
-                <span className="flex items-center gap-2"><MessageSquare className="h-5 w-5 text-sky-400" />Opportunity Chats</span>
-                <Badge className="bg-slate-700 text-slate-100">{sessions.length}</Badge>
+          <Card className="rounded-[24px] bg-white border border-stone-300 shadow-md">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-stone-700 text-sm font-semibold tracking-wide uppercase">
+                Compare Districts
               </CardTitle>
-              <Button onClick={createNewChat} className="w-full bg-sky-600 hover:bg-sky-500">
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="primary-district" className="text-xs text-stone-500">District A</Label>
+                  <Select value={primaryDistrict} onValueChange={setPrimaryDistrict}>
+                    <SelectTrigger id="primary-district" className="border-stone-300 bg-stone-50 text-stone-800">
+                      <SelectValue placeholder="Select district" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {districtOptions.map((district) => (
+                        <SelectItem key={district} value={district}>{district}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <span className="pt-6 text-sm font-semibold text-stone-500">vs</span>
+
+                <div className="space-y-2">
+                  <Label htmlFor="secondary-district" className="text-xs text-stone-500">District B</Label>
+                  <Select value={secondaryDistrict} onValueChange={setSecondaryDistrict}>
+                    <SelectTrigger id="secondary-district" className="border-stone-300 bg-stone-50 text-stone-800">
+                      <SelectValue placeholder="Select district" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {districtOptions.map((district) => (
+                        <SelectItem key={district} value={district}>{district}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <Button
+                onClick={handleCompareDistricts}
+                disabled={primaryDistrict === secondaryDistrict || isTyping}
+                className="w-full bg-white text-stone-900 border border-stone-300 hover:bg-stone-50"
+              >
+                Compare districts
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[24px] bg-white border border-stone-300 shadow-md">
+            <CardHeader className="space-y-3">
+              <CardTitle className="text-stone-800 flex items-center justify-between">
+                <span className="flex items-center gap-2"><MessageSquare className="h-5 w-5 text-amber-700" />Opportunity Chat History</span>
+                <Badge className="bg-stone-200 text-stone-700">{sessions.length}</Badge>
+              </CardTitle>
+              <Button type="button" onClick={createNewChat} className="w-full bg-stone-800 hover:bg-stone-700">
                 <Plus className="mr-2 h-4 w-4" />
                 New Chat
               </Button>
             </CardHeader>
-            <CardContent className="space-y-2 max-h-[45vh] overflow-y-auto">
+            <CardContent className="space-y-2 max-h-[20vh] overflow-y-auto pt-0">
               {sessions.map((session) => (
                 <div
                   key={session.id}
-                  className={`rounded-lg border p-3 transition ${activeSessionId === session.id ? "border-sky-500 bg-slate-800" : "border-slate-700 bg-slate-900"}`}
+                  className={`rounded-lg border p-3 transition cursor-pointer ${activeSessionId === session.id ? "border-amber-700 bg-amber-50" : "border-stone-200 bg-stone-50"}`}
+                  onClick={() => handleSelectSession(session.id)}
                 >
-                  <button className="w-full text-left" onClick={() => setActiveSessionId(session.id)}>
-                    <p className="text-sm text-white font-medium truncate">{session.title}</p>
-                    <p className="text-xs text-slate-400">{new Date(session.updatedAt).toLocaleString()}</p>
+                  <button type="button" className="w-full text-left" onClick={() => handleSelectSession(session.id)}>
+                    <p className="text-sm text-stone-800 font-medium truncate">{session.title}</p>
+                    <p className="text-xs text-stone-500">{new Date(session.updatedAt).toLocaleString()}</p>
                   </button>
                   <div className="mt-2 flex justify-end">
-                    <Button size="sm" variant="ghost" onClick={() => deleteChat(session.id)} className="text-red-300 hover:text-red-200">
+                    <Button size="sm" type="button" variant="ghost" onClick={(event) => {
+                      event.stopPropagation();
+                      void deleteChat(session.id);
+                    }} className="text-red-500 hover:text-red-400">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -672,13 +781,13 @@ export function OpportunityCostCalculator() {
           </Card>
         </div>
 
-        <Card className="flex h-[78vh] flex-col bg-white border-slate-200">
-          <CardHeader className="border-b bg-gradient-to-r from-blue-900 to-sky-700 text-white">
-            <CardTitle className="flex items-center gap-2">
+        <Card className="flex h-[84vh] flex-col rounded-[28px] overflow-hidden bg-white border border-stone-300 shadow-md self-start">
+          <CardHeader className="border-b bg-gradient-to-r from-stone-800 to-stone-600 text-white">
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
               <Bot className="h-5 w-5" />
-              Opportunity Advisor
+              Oppurtunity Cost Chatbot
             </CardTitle>
-            <p className="text-sm text-blue-100">Use the Collin County filters for a saved result, then use chat for follow-up tradeoff analysis.</p>
+            <p className="mt-2 text-sm leading-relaxed text-stone-300">Describe your situation and our backend will return an opportunity cost analysis.</p>
             {opportunityResult && (
               <div className="rounded-md bg-white/15 p-3 text-sm backdrop-blur">
                 <div className="grid grid-cols-1 gap-1 md:grid-cols-3">
@@ -690,10 +799,10 @@ export function OpportunityCostCalculator() {
             )}
           </CardHeader>
 
-          <CardContent ref={scrollerRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+          <CardContent ref={scrollerRef} className="flex-1 overflow-y-auto p-5 space-y-4 bg-[#faf6f0]">
             {activeSession?.messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[80%] rounded-xl p-3 ${message.role === "user" ? "bg-blue-900 text-white" : "bg-white border text-gray-800"}`}>
+                <div className={`max-w-[80%] rounded-xl p-3 ${message.role === "user" ? "bg-stone-800 text-white" : "bg-white border text-stone-800"}`}>
                   <div className="mb-1 flex items-center gap-2 text-xs opacity-80">
                     {message.role === "user" ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
                     <span>{message.role === "user" ? "You" : "Advisor"}</span>
@@ -711,20 +820,20 @@ export function OpportunityCostCalculator() {
             )}
           </CardContent>
 
-          <div className="border-t bg-white p-4">
+          <div className="border-t bg-white p-5">
             <div className="flex gap-2">
               <Input
-                placeholder="Example: I can buy now at $540k or wait 9 months, what is the opportunity cost?"
+                placeholder="Example: compare Frisco ISD vs Plano ISD with school quality weighted highest"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    sendMessage();
+                    submitDraftMessage();
                   }
                 }}
               />
-              <Button onClick={sendMessage} disabled={!draft.trim() || isTyping} className="bg-blue-900 hover:bg-blue-800">
+              <Button type="button" onClick={submitDraftMessage} disabled={!draft.trim() || isTyping} className="bg-stone-800 hover:bg-stone-700">
                 <Send className="h-4 w-4" />
               </Button>
             </div>

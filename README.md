@@ -1,8 +1,6 @@
 
   # Real Estate Analysis Tool
-
-  This is a code bundle for Real Estate Analysis Tool. The original project is available at https://www.figma.com/design/skVgYx6eHtj3KtLcVeUmWz/Real-Estate-Analysis-Tool.
-
+  
   ## Running the code
 
   Run `npm i` to install the dependencies.

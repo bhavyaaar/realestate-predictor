@@ -22,3 +22,8 @@ Thumbs.db
 
 .vscode/
 .idea/
+
+.venv/
+__pycache__/
+*.pyc
+data/normalized_output.csv

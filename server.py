@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from agentic_layer import run_opportunity_agent  # type: ignore
-from predictor import get_forecast_df, respond_to_price_question  # type: ignore
+from model import get_forecast_df, respond_to_price_question  # type: ignore
 
 # ── State ──────────────────────────────────────────────────────────────────────
 _forecast_df = None

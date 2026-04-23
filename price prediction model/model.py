@@ -251,14 +251,23 @@ def respond_to_price_question(user_question, forecast_df):
 
 
 
-print("🏠 Welcome to the Real Estate Price Chatbot!")
-print("Type your question about a city (and optionally a month/year), or 'exit' to quit.")
+# print("🏠 Welcome to the Real Estate Price Chatbot!")
+# print("Type your question about a city (and optionally a month/year), or 'exit' to quit.")
 
-while True:
-    user_input = input("\nYou: ")
-    if user_input.lower() in ['exit', 'quit']:
-        print("bot: Goodbye! 👋")
-        break
+# while True:
+#     user_input = input("\nYou: ")
+#     if user_input.lower() in ['exit', 'quit']:
+#         print("bot: Goodbye! 👋")
+#         break
 
-    response = respond_to_price_question(user_input, forecast_df)
-    print(f"\nbot:\n{response}")
+#     response = respond_to_price_question(user_input, forecast_df)
+#     print(f"\nbot:\n{response}")
+
+
+# Backend integration function (was added for server.py compatibility)
+def get_forecast_df() -> pd.DataFrame:
+    """
+    Returns the forecast_df that was already trained and generated above.
+    This function is called by server.py on startup.
+    """
+    return forecast_df

@@ -20,19 +20,19 @@ date_cols = [col for col in all_cols if col not in non_date_cols and '2020' <= c
 cols_keep = non_date_cols + date_cols
 # New DataFrame with the capped data
 df_capped = df_home_data[cols_keep]
-df_capped.head(20)
+#df_capped.head(20)
 
 # Data Cleaning and Preprocessing
 
 # Converted the df_capped DataFrame from its current wide format to a long format to create a Date col and a House_Price col
 df_house = pd.melt(df_capped, id_vars=non_date_cols, value_vars=date_cols, var_name='Date', value_name='House_Price')
 df_house['Date'] = pd.to_datetime(df_house['Date'])
-df_house.head(40)
+#df_house.head(40)
 # created 'Day', 'Year', and 'Month' cols from the 'Date' col
 df_house['Year'] = df_house['Date'].dt.year
 df_house['Month'] = df_house['Date'].dt.month
 df_house['Day'] = df_house['Date'].dt.day
-df_house.head()
+#df_house.head()
 
 # Feature Engineering
 # Sort the dataset by 'Date' so time order is correct
@@ -65,7 +65,7 @@ df_model.dropna(inplace=True)  # drop NaNs caused by prev month/year
 X = df_model.drop('House_Price', axis=1) # features
 Y = df_model['House_Price'] # target variable
 
-print(df_model.head(40))
+#print(df_model.head(40))
 
 # Model Training and Evaluation
 from xgboost import XGBRegressor
@@ -108,7 +108,7 @@ grid_search = GridSearchCV(
 
 grid_search.fit(X_train, y_train)
 
-print("Best parameters:", grid_search.best_params_)
+#print("Best parameters:", grid_search.best_params_)
 
 # Best model
 best_model = grid_search.best_estimator_
@@ -121,11 +121,11 @@ r2 = r2_score(y_test, y_pred)
 mse = mean_squared_error(y_test, y_pred)
 rmse = np.sqrt(mse)
 
-print("R2:", r2)
-print("MSE:", mse)
-print("RMSE:", rmse)
+#print("R2:", r2)
+#print("MSE:", mse)
+#print("RMSE:", rmse)
 rel_rmse = rmse / np.mean(y_test) * 100
-print(f"Relative RMSE: {rel_rmse:.2f}%")
+#print(f"Relative RMSE: {rel_rmse:.2f}%")
 
 
 # Predict House Prices Over Span of 6 Months
@@ -192,7 +192,7 @@ for city in cities:
 # Convert the list of predictions into a DataFrame
 forecast_df = pd.DataFrame(future_predictions)
 # Display results
-print(forecast_df.head(500))
+#print(forecast_df.head(500))
 
 # Chatbot
 import pandas as pd

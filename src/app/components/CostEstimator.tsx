@@ -67,6 +67,7 @@ export function CostEstimator() {
   const [activeSessionId, setActiveSessionId] = useState<string>(() => sessions[0]?.id || "");
   const [draft, setDraft] = useState("");
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) || sessions[0],
@@ -116,30 +117,60 @@ export function CostEstimator() {
       createdAt: new Date().toISOString(),
     };
 
-    const placeholderReply: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: "Your message has been received. This is a frontend-only build — live price predictions will be returned once the backend is connected.",
-      createdAt: new Date().toISOString(),
-    };
-
     const title = activeSession.messages.length <= 1 ? trimmed.slice(0, 40) : activeSession.title;
     const updatedAt = new Date().toISOString();
+    const sessionId = activeSession.id;
 
     setSessions((prev) =>
       prev.map((session) =>
-        session.id === activeSession.id
+        session.id === sessionId
           ? {
               ...session,
               title: title || session.title,
               updatedAt,
-              messages: [...session.messages, userMessage, placeholderReply],
+              messages: [...session.messages, userMessage],
             }
           : session,
       ),
     );
 
     setDraft("");
+    setIsTyping(true);
+
+    void (async () => {
+      let assistantContent = "Sorry, I couldn't reach the price prediction backend. Please make sure the server is running.";
+
+      try {
+        const res = await fetch("/api/price", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: trimmed }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          assistantContent = data.response || assistantContent;
+        }
+      } catch {
+        // network error — fallback message already set
+      }
+
+      const assistantReply: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: assistantContent,
+        createdAt: new Date().toISOString(),
+      };
+
+      setIsTyping(false);
+
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.id === sessionId
+            ? { ...session, messages: [...session.messages, assistantReply] }
+            : session,
+        ),
+      );
+    })();
   };
 
   const submitDraftMessage = () => {
@@ -213,6 +244,11 @@ export function CostEstimator() {
                 </div>
               </div>
             ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="rounded-xl border bg-white px-3 py-2 text-sm text-gray-600">Predictor is typing...</div>
+              </div>
+            )}
           </CardContent>
 
           <div className="border-t bg-white p-5">
@@ -228,7 +264,7 @@ export function CostEstimator() {
                   }
                 }}
               />
-              <Button type="button" onClick={submitDraftMessage} disabled={!draft.trim()} className="bg-stone-800 hover:bg-stone-700">
+              <Button type="button" onClick={submitDraftMessage} disabled={!draft.trim() || isTyping} className="bg-stone-800 hover:bg-stone-700">
                 <Send className="h-4 w-4" />
               </Button>
             </div>

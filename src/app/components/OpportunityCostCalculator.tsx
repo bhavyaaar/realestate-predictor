@@ -574,14 +574,7 @@ export function OpportunityCostCalculator() {
 
     const sessionTitle = currentSession.messages.length <= 1 ? trimmed.slice(0, 40) : currentSession.title;
 
-    const placeholderReply: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: "Your message has been received. This is a frontend-only build — live opportunity analysis will be returned once the backend is connected.",
-      timestamp: new Date().toISOString(),
-    };
-
-    // TODO: Replace this placeholder with a real backend API call during chatbot integration.
+    // Optimistically add the user message and show the typing indicator
     setSessions((prev) => {
       const now = new Date().toISOString();
       const next = prev.map((session) =>
@@ -590,7 +583,7 @@ export function OpportunityCostCalculator() {
               ...session,
               title: sessionTitle || session.title,
               updatedAt: now,
-              messages: [...session.messages, userMessage, placeholderReply],
+              messages: [...session.messages, userMessage],
             }
           : session,
       );
@@ -598,10 +591,55 @@ export function OpportunityCostCalculator() {
       return next;
     });
     setDraft("");
-    setIsTyping(false);
+    setIsTyping(true);
 
-    if (user && !isGuest && chatStorageMode === "supabase") {
-      void (async () => {
+    void (async () => {
+      let assistantContent = "Sorry, I couldn't reach the analysis backend. Please make sure the server is running.";
+
+      try {
+        const res = await fetch("/api/opportunity", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: trimmed,
+            school_weight: priorityWeights.schoolQuality,
+            crime_weight: priorityWeights.safety,
+            price_weight: priorityWeights.affordability,
+            district_a: primaryDistrict || undefined,
+            district_b: secondaryDistrict || undefined,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          assistantContent = data.response || assistantContent;
+        }
+      } catch {
+        // network error — fallback message already set
+      }
+
+      const assistantReply: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: assistantContent,
+        timestamp: new Date().toISOString(),
+      };
+
+      setIsTyping(false);
+
+      setSessions((prev) => {
+        const now = new Date().toISOString();
+        return prev.map((session) =>
+          session.id === targetSessionId
+            ? {
+                ...session,
+                updatedAt: now,
+                messages: [...session.messages, assistantReply],
+              }
+            : session,
+        );
+      });
+
+      if (user && !isGuest && chatStorageMode === "supabase") {
         const nextTitle = sessionTitle || activeSession.title;
         const now = new Date().toISOString();
 
@@ -626,20 +664,20 @@ export function OpportunityCostCalculator() {
             created_at: userMessage.timestamp,
           },
           {
-            id: placeholderReply.id,
+            id: assistantReply.id,
             session_id: targetSessionId,
             user_id: user.id,
-            role: placeholderReply.role,
-            content: placeholderReply.content,
-            created_at: placeholderReply.timestamp,
+            role: assistantReply.role,
+            content: assistantReply.content,
+            created_at: assistantReply.timestamp,
           },
         ]);
 
         if (insertError) {
           console.error("Failed to store chat messages:", insertError.message);
         }
-      })();
-    }
+      }
+    })();
   };
 
   const submitDraftMessage = () => {

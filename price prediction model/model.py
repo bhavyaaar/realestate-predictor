@@ -195,93 +195,103 @@ forecast_df = pd.DataFrame(future_predictions)
 #print(forecast_df.head(500))
 
 # Chatbot
+import os
 import pandas as pd
 import re
 from dateutil.parser import parse
 
-#GLOBAL MEMORY to help with follow up
-conversation_context = {
-    "last_cities": [],
-    "last_date": None
-}
+def _gemini_fallback(user_question: str, cities_list, history: list = []) -> str:
+    """Use Gemini to handle general / non-price questions with conversation history."""
+    try:
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            return "I can only answer questions about home prices in Collin County cities. Try asking about a specific city!"
 
-def respond_to_price_question(user_question, forecast_df):
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=api_key)
+        model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+
+        system_context = (
+            "You are a friendly AI assistant for a Collin County, TX home price predictor app. "
+            f"You have price forecast data for these cities: {', '.join(cities_list)}. "
+            "Chat naturally with the user — respond warmly to greetings, small talk, and off-topic questions. "
+            "But always find a smooth, natural way to bring the conversation back to real estate or home prices in Collin County. "
+            "Never be robotic or blunt about redirecting — make it feel like a natural transition. "
+            "Keep responses short and conversational."
+        )
+
+        # Build conversation history for Gemini (skip the initial welcome message)
+        contents = []
+        for msg in history[1:]:  # skip the assistant intro message
+            role = "user" if msg.get("role") == "user" else "model"
+            contents.append(types.Content(role=role, parts=[types.Part(text=msg.get("content", ""))]))
+        # Add current user message
+        contents.append(types.Content(role="user", parts=[types.Part(text=user_question)]))
+
+        response = client.models.generate_content(
+            model=model_name,
+            config=types.GenerateContentConfig(system_instruction=system_context),
+            contents=contents,
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"[Gemini error] {type(e).__name__}: {e}")
+        return f"[DEBUG] Gemini error: {type(e).__name__}: {e}"
+
+
+def respond_to_price_question(user_question, forecast_df, history: list = []):
     """
     Respond to a user question about forecasted home prices.
+    Routes general/conversational questions to Gemini LLM with full conversation history.
     Can handle a city, and optionally a specific month/year.
     """
-    import re
-    from dateutil.parser import parse
-
-    global conversation_context
-
-    # ---- STEP 1: Detect ALL cities ----
     cities = forecast_df['City'].unique()
-    matched_cities = []
 
+    # Step 1: Detect city
+    matched_city = None
     for city in cities:
         if re.search(r'\b' + re.escape(city) + r'\b', user_question, re.IGNORECASE):
-            matched_cities.append(city)
+            matched_city = city
+            break
 
-    # ---- STEP 2: Detect date ----
+    if not matched_city:
+        # Fall back to Gemini with full conversation history
+        return _gemini_fallback(user_question, list(cities), history)
+
+    # Step 2: Detect month/year (optional)
+    # Try to parse any date in the user input
     matched_date = None
     try:
-        parsed_date = parse(user_question, fuzzy=True)
+        parsed_date = parse(user_question, fuzzy=True, default=pd.Timestamp.today())
         matched_date = pd.Timestamp(year=parsed_date.year, month=parsed_date.month, day=1)
     except:
-        matched_date = None
+        matched_date = None  # no valid date found
 
-    # ---- STEP 3: HANDLE FOLLOW-UPS ----
-    # If user didn't give city → reuse last
-    if not matched_cities and conversation_context["last_cities"]:
-        matched_cities = conversation_context["last_cities"]
+    # Step 3: Filter forecast_df for the city
+    city_forecast = forecast_df[forecast_df['City'] == matched_city].sort_values('Date')
 
-    # If user didn't give date → reuse last
-    if not matched_date and conversation_context["last_date"] is not None:
-        matched_date = conversation_context["last_date"]
+    # Step 4: Respond
+    if matched_date:
+        # Find closest month in forecast
+        specific_forecast = city_forecast[
+            (city_forecast['Date'].dt.year == matched_date.year) &
+            (city_forecast['Date'].dt.month == matched_date.month)
+        ]
+        if specific_forecast.empty:
+            return f"Sorry, I don't have a prediction for {matched_city} in {matched_date.strftime('%b %Y')}."
+        row = specific_forecast.iloc[0]
+        price_str = f"${row['Predicted_Price']:,.0f}"
+        return f"Predicted home price for {matched_city} in {matched_date.strftime('%b %Y')}: {price_str}"
 
-    # If STILL no city → fallback
-    if not matched_cities:
-        return "Hey! Ask me about home prices like: 'Plano June 2026' or 'Wylie forecast'."
-
-    # Save context
-    conversation_context["last_cities"] = matched_cities
-    conversation_context["last_date"] = matched_date
-
-    # ---- STEP 4: GENERATE RESPONSE ----
-    responses = []
-
-    for city in matched_cities:
-        city_forecast = forecast_df[
-            forecast_df['City'] == city
-        ].sort_values('Date')
-
-        if matched_date:
-            specific = city_forecast[
-                (city_forecast['Date'].dt.year == matched_date.year) &
-                (city_forecast['Date'].dt.month == matched_date.month)
-            ]
-
-            if specific.empty:
-                responses.append(
-                    f"{city}: no data for {matched_date.strftime('%b %Y')}"
-                )
-            else:
-                row = specific.iloc[0]
-                price = f"${row['Predicted_Price']:,.0f}"
-                responses.append(
-                    f"{city}: {price} ({matched_date.strftime('%b %Y')})"
-                )
-
-        else:
-            lines = [f"{city} (next 6 months):"]
-            for _, row in city_forecast.iterrows():
-                month = row['Date'].strftime("%b %Y")
-                price = f"${row['Predicted_Price']:,.0f}"
-                lines.append(f"  - {month}: {price}")
-            responses.append("\n".join(lines))
-
-    return "\n\n".join(responses)
+    else:
+        # if month is not specified: return full 6-month forecast
+        response_lines = [f"Predicted home prices for {matched_city} for the next 6 months:"]
+        for _, row in city_forecast.iterrows():
+            month_str = row['Date'].strftime("%b %Y")
+            price_str = f"${row['Predicted_Price']:,.0f}"
+            response_lines.append(f"- {month_str}: {price_str}")
+        return "\n".join(response_lines)
 
 
 
@@ -305,4 +315,3 @@ def get_forecast_df() -> pd.DataFrame:
     This function is called by server.py on startup.
     """
     return forecast_df
-

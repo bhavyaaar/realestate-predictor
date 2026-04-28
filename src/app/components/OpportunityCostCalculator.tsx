@@ -70,12 +70,19 @@ const priorityDetails: Record<PriorityKey, { label: string }> = {
 };
 
 const districtOptions = [
-  "Frisco ISD",
-  "Plano ISD",
-  "McKinney ISD",
-  "Allen ISD",
-  "Prosper ISD",
-  "Wylie ISD",
+  "Frisco",
+  "Plano",
+  "McKinney",
+  "Allen",
+  "Prosper",
+  "Wylie",
+  "Anna",
+  "Melissa",
+  "Celina",
+  "Princeton",
+
+
+
 ];
 
 const defaultPriorityWeights: PriorityWeights = {

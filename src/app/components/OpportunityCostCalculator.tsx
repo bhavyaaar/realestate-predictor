@@ -712,6 +712,9 @@ export function OpportunityCostCalculator() {
               <CardTitle className="text-stone-700 text-sm font-semibold tracking-wide uppercase">
                 Your Priorities (must = 100%)
               </CardTitle>
+              <p className="text-xs text-stone-500 leading-relaxed">
+              Adjust the sliders to show the chatbot what matters most to you. It will use your preferences to evaluate different cities and provide personalized recommendations tailored to your priorities.
+            </p>
             </CardHeader>
             <CardContent className="space-y-4 pt-0">
               {priorityKeys.map((key) => (

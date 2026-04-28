@@ -306,7 +306,8 @@ def generate_explanation_with_gemini(explanation_data: Optional[Dict[str, Any]])
             "best_for": "",
         }
 
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    #api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         return _fallback_explanation_sentences(explanation_data)
 
@@ -375,7 +376,7 @@ Structured data:
         from google import genai
 
         client = genai.Client(api_key=api_key)
-        model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+        model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
         response = client.models.generate_content(
             model=model,
             contents=prompt,

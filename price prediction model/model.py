@@ -203,14 +203,15 @@ from dateutil.parser import parse
 def _gemini_fallback(user_question: str, cities_list, history: list = []) -> str:
     """Use Gemini to handle general / non-price questions with conversation history."""
     try:
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        #api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             return "I can only answer questions about home prices in Collin County cities. Try asking about a specific city!"
 
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=api_key)
-        model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+        model_name = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
         system_context = (
             "You are a friendly AI assistant for a Collin County, TX home price predictor app. "

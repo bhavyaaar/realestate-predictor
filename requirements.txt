@@ -9,3 +9,5 @@ uvicorn[standard]>=0.29.0
 numpy>=1.26.0
 python-dateutil>=2.9.0
 vaderSentiment
+matplotlib>=3.8.0
+seaborn>=0.13.0

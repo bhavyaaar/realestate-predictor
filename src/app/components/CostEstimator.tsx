@@ -51,6 +51,20 @@ const createSession = (): PredictionSession => ({
 
 
 export function CostEstimator() {
+  const [priceModelReady, setPriceModelReady] = useState(false);
+  const [chartBust, setChartBust] = useState(0);
+
+  useEffect(() => {
+    void fetch("/api/health")
+      .then((r) => r.json())
+      .then((data: { price_model_ready?: boolean }) => setPriceModelReady(!!data.price_model_ready))
+      .catch(() => setPriceModelReady(false));
+  }, []);
+
+  useEffect(() => {
+    if (priceModelReady) setChartBust(Date.now());
+  }, [priceModelReady]);
+
   const [sessions, setSessions] = useState<PredictionSession[]>(() => {
     const raw = localStorage.getItem(CHAT_STORAGE_KEY);
     if (!raw) {
@@ -184,7 +198,25 @@ export function CostEstimator() {
 
   return (
     <div className="min-h-screen bg-transparent p-4 md:p-6">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+      <div className="mx-auto max-w-7xl space-y-6">
+        {priceModelReady && (
+          <Card className="bg-white border border-stone-300 shadow-md overflow-hidden">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-stone-800 text-base">Collin County: historical vs forecast</CardTitle>
+              <p className="text-xs text-stone-500 mt-1">
+                County-wide average home price over time; forecast continues from the latest historical month.
+              </p>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4">
+              <img
+                src={`/api/collin-average-chart?bust=${chartBust}`}
+                alt="Historical and forecasted monthly average house prices in Collin County"
+                className="w-full rounded-lg border border-stone-200 bg-stone-50"
+              />
+            </CardContent>
+          </Card>
+        )}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
         <div className="space-y-4 self-start">
           <Card className="bg-white border border-stone-300 shadow-md">
             <CardHeader className="space-y-3">
@@ -270,6 +302,7 @@ export function CostEstimator() {
             </div>
           </div>
         </Card>
+      </div>
       </div>
     </div>
   );

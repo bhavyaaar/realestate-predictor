@@ -199,6 +199,7 @@ import os
 import pandas as pd
 import re
 from dateutil.parser import parse
+from typing import Optional
 
 def _gemini_fallback(user_question: str, cities_list, history: list = []) -> str:
     """Use Gemini to handle general / non-price questions with conversation history."""
@@ -241,58 +242,287 @@ def _gemini_fallback(user_question: str, cities_list, history: list = []) -> str
         return f"[DEBUG] Gemini error: {type(e).__name__}: {e}"
 
 
+_MONTH_WORD_TO_NUM = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+    "jan": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "sept": 9,
+    "oct": 10,
+    "nov": 11,
+    "dec": 12,
+}
+
+_NEXT_N_WORD_TO_INT = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+}
+
+_MONTH_NAME_REGEX = re.compile(
+    r"\b(" + "|".join(sorted(_MONTH_WORD_TO_NUM.keys(), key=len, reverse=True)) + r")\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _parse_next_n_months_horizon(user_question: str) -> Optional[int]:
+    """
+    'next N month(s)' with a digit or word (one, two, …); also 'next month' (counts as 1).
+    Returns None if not matched or the count word is unrecognized (e.g. 'next few months').
+    """
+    m = re.search(r"\bnext\s+(\d+|[a-z]+)\s+months?\b", user_question, flags=re.IGNORECASE)
+    if m:
+        raw = m.group(1).lower()
+        if raw.isdigit():
+            n = int(raw)
+        else:
+            n = _NEXT_N_WORD_TO_INT.get(raw)  # type: ignore[assignment]
+        if n is not None and n >= 1:
+            return min(n, 24)
+    if re.search(r"\bnext\s+month\b", user_question, flags=re.IGNORECASE):
+        return 1
+    return None
+
+
+def _wants_this_or_current_calendar_month(user_question: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:this|the\s+current|current)\s+month\b",
+            user_question,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _month_names_in_order(user_question: str) -> list[int]:
+    """Month numbers (1–12) in order of appearance."""
+    nums: list[int] = []
+    for m in _MONTH_NAME_REGEX.finditer(user_question):
+        key = m.group(1).lower()
+        if key == "may" and re.match(r"\s*i\b", user_question[m.end() :], re.IGNORECASE):
+            continue  # skip "May I ..." auxiliary-verb phrase
+        mn = _MONTH_WORD_TO_NUM.get(key)
+        if mn is not None:
+            nums.append(mn)
+    return nums
+
+
+def _forecast_rows_for_named_months(city_forecast: pd.DataFrame, month_nums: list[int]) -> pd.DataFrame:
+    """One row per named month, using the first calendar year where all of them exist in the forecast."""
+    cf = city_forecast.sort_values("Date")
+    if not month_nums:
+        return cf.iloc[:0]
+    for y in sorted(cf["Date"].dt.year.unique()):
+        rows: list[pd.Series] = []
+        ok = True
+        for mn in month_nums:
+            hit = cf[(cf["Date"].dt.year == y) & (cf["Date"].dt.month == mn)]
+            if hit.empty:
+                ok = False
+                break
+            rows.append(hit.iloc[0])
+        if ok:
+            return pd.DataFrame(rows)
+    return cf.iloc[:0]
+
+
+def _forecast_rows_after_current_month(city_forecast: pd.DataFrame, n_months: int) -> pd.DataFrame:
+    """
+    Rows whose period is strictly after the current calendar month, then take the first n.
+    """
+    if city_forecast.empty or n_months <= 0:
+        return city_forecast.iloc[:0]
+    cur = pd.Timestamp.today().normalize().to_period("M")
+    fut = city_forecast[city_forecast["Date"].dt.to_period("M") > cur].sort_values("Date")
+    return fut.head(n_months)
+
+
+def _format_price_bullet_lines(title: str, rows_df: pd.DataFrame) -> str:
+    lines = [title]
+    for _, row in rows_df.iterrows():
+        month_str = row["Date"].strftime("%b %Y")
+        price_str = f"${row['Predicted_Price']:,.0f}"
+        lines.append(f"- {month_str}: {price_str}")
+    return "\n".join(lines)
+
+
+def _cities_mentioned_ordered(user_question: str, cities) -> list:
+    """
+    Collect every forecast city whose name appears as a whole word in the question,
+    ordered by first occurrence in the text (e.g. 'Allen and Wylie' → Allen, then Wylie).
+    """
+    hits = []
+    for city in cities:
+        m = re.search(r'\b' + re.escape(str(city)) + r'\b', user_question, re.IGNORECASE)
+        if m:
+            hits.append((m.start(), city))
+    hits.sort(key=lambda x: x[0])
+    return [c for _, c in hits]
+
+
 def respond_to_price_question(user_question, forecast_df, history: list = []):
     """
     Respond to a user question about forecasted home prices.
     Routes general/conversational questions to Gemini LLM with full conversation history.
-    Can handle a city, and optionally a specific month/year.
+    Can handle one or more cities, and optionally a specific month/year.
     """
     cities = forecast_df['City'].unique()
 
-    # Step 1: Detect city
-    matched_city = None
-    for city in cities:
-        if re.search(r'\b' + re.escape(city) + r'\b', user_question, re.IGNORECASE):
-            matched_city = city
-            break
+    # Step 1: Detect all cities mentioned (order preserved by appearance in message)
+    matched_cities = _cities_mentioned_ordered(user_question, cities)
 
-    if not matched_city:
+    if not matched_cities:
         # Fall back to Gemini with full conversation history
         return _gemini_fallback(user_question, list(cities), history)
 
-    # Step 2: Detect month/year (optional)
-    # Try to parse any date in the user input
+    horizon_n = _parse_next_n_months_horizon(user_question)
+    wants_calendar_now = _wants_this_or_current_calendar_month(user_question)
+    month_names_ordered = _month_names_in_order(user_question)
+
+    # Fuzzy parse for a calendar month/year — skip when it would fight clearer intents,
+    # or when multiple month names appear (avoid spurious single-month picks from words like 'prices').
     matched_date = None
-    try:
-        parsed_date = parse(user_question, fuzzy=True, default=pd.Timestamp.today())
-        matched_date = pd.Timestamp(year=parsed_date.year, month=parsed_date.month, day=1)
-    except:
-        matched_date = None  # no valid date found
+    skip_fuzzy = (
+        horizon_n is not None
+        or wants_calendar_now
+        or len(month_names_ordered) >= 2
+    )
+    if not skip_fuzzy:
+        try:
+            parsed_date = parse(user_question, fuzzy=True, default=pd.Timestamp.today())
+            matched_date = pd.Timestamp(year=parsed_date.year, month=parsed_date.month, day=1)
+        except Exception:
+            matched_date = None
 
-    # Step 3: Filter forecast_df for the city
-    city_forecast = forecast_df[forecast_df['City'] == matched_city].sort_values('Date')
+    def _forecast_for_city(matched_city: str) -> str:
+        city_forecast = forecast_df[forecast_df["City"] == matched_city].sort_values("Date")
 
-    # Step 4: Respond
-    if matched_date:
-        # Find closest month in forecast
-        specific_forecast = city_forecast[
-            (city_forecast['Date'].dt.year == matched_date.year) &
-            (city_forecast['Date'].dt.month == matched_date.month)
-        ]
-        if specific_forecast.empty:
-            return f"Sorry, I don't have a prediction for {matched_city} in {matched_date.strftime('%b %Y')}."
-        row = specific_forecast.iloc[0]
-        price_str = f"${row['Predicted_Price']:,.0f}"
-        return f"Predicted home price for {matched_city} in {matched_date.strftime('%b %Y')}: {price_str}"
+        # 1) Rolling window: next N months after today (not including the current calendar month)
+        if horizon_n is not None:
+            short = _forecast_rows_after_current_month(city_forecast, horizon_n)
+            if short.empty:
+                return (
+                    f"Sorry, I don't have enough future months in the forecast for {matched_city} "
+                    "after the current month."
+                )
+            if horizon_n == 1:
+                title = f"Predicted home prices for {matched_city} for the next month:"
+            else:
+                title = f"Predicted home prices for {matched_city} for the next {horizon_n} months:"
+            return _format_price_bullet_lines(title, short)
 
-    else:
-        # if month is not specified: return full 6-month forecast
+        # 2) This / current calendar month
+        if wants_calendar_now:
+            cur = pd.Timestamp.today().normalize().to_period("M")
+            tm = city_forecast[city_forecast["Date"].dt.to_period("M") == cur]
+            if tm.empty:
+                return (
+                    f"Sorry, I don't have a prediction for {matched_city} for "
+                    f"{pd.Timestamp.today():%b %Y}."
+                )
+            row = tm.iloc[0]
+            price_str = f"${row['Predicted_Price']:,.0f}"
+            return (
+                f"Predicted home price for {matched_city} in {row['Date'].strftime('%b %Y')}: "
+                f"{price_str}"
+            )
+
+        # 3) Several named months (e.g. February, March, and April)
+        if len(month_names_ordered) >= 2:
+            named_df = _forecast_rows_for_named_months(city_forecast, month_names_ordered)
+            if named_df.empty:
+                pretty = ", ".join(
+                    pd.Timestamp(2020, m, 1).strftime("%B") for m in month_names_ordered
+                )
+                return f"Sorry, I don't have predictions for {matched_city} covering {pretty}."
+            title = f"Predicted home prices for {matched_city}:"
+            return _format_price_bullet_lines(title, named_df)
+
+        # 4) Exactly one named month — prefer spelled month over a mismatched fuzzy date
+        if len(month_names_ordered) == 1:
+            mnum = month_names_ordered[0]
+            if matched_date is not None and matched_date.month == mnum:
+                specific_forecast = city_forecast[
+                    (city_forecast["Date"].dt.year == matched_date.year)
+                    & (city_forecast["Date"].dt.month == mnum)
+                ]
+            else:
+                hit = city_forecast[city_forecast["Date"].dt.month == mnum].sort_values("Date")
+                specific_forecast = hit.iloc[:1]
+            if specific_forecast.empty:
+                return (
+                    f"Sorry, I don't have a prediction for {matched_city} in "
+                    f"{pd.Timestamp(2020, mnum, 1).strftime('%B')}."
+                )
+            row = specific_forecast.iloc[0]
+            price_str = f"${row['Predicted_Price']:,.0f}"
+            return (
+                f"Predicted home price for {matched_city} in {row['Date'].strftime('%b %Y')}: "
+                f"{price_str}"
+            )
+
+        # 5) Fuzzy single month/year (no spelled month extracted)
+        if matched_date:
+            specific_forecast = city_forecast[
+                (city_forecast["Date"].dt.year == matched_date.year)
+                & (city_forecast["Date"].dt.month == matched_date.month)
+            ]
+            if specific_forecast.empty:
+                return (
+                    f"Sorry, I don't have a prediction for {matched_city} in "
+                    f"{matched_date.strftime('%b %Y')}."
+                )
+            row = specific_forecast.iloc[0]
+            price_str = f"${row['Predicted_Price']:,.0f}"
+            return (
+                f"Predicted home price for {matched_city} in {matched_date.strftime('%b %Y')}: "
+                f"{price_str}"
+            )
+
+        # 6) Default: full horizon in dataset (6 months ahead)
         response_lines = [f"Predicted home prices for {matched_city} for the next 6 months:"]
         for _, row in city_forecast.iterrows():
-            month_str = row['Date'].strftime("%b %Y")
+            month_str = row["Date"].strftime("%b %Y")
             price_str = f"${row['Predicted_Price']:,.0f}"
             response_lines.append(f"- {month_str}: {price_str}")
         return "\n".join(response_lines)
+
+    if len(matched_cities) == 1:
+        return _forecast_for_city(matched_cities[0])
+
+    # Multiple cities: section per city (same wording as single-city replies)
+    parts = []
+    for i, mc in enumerate(matched_cities):
+        block = _forecast_for_city(mc)
+        if i > 0:
+            parts.append("")
+        parts.append(block)
+    return "\n".join(parts)
 
 
 
@@ -316,3 +546,8 @@ def get_forecast_df() -> pd.DataFrame:
     This function is called by server.py on startup.
     """
     return forecast_df
+
+
+def get_df_house() -> pd.DataFrame:
+    """Long-format Collin County Zillow history used for training and charts."""
+    return df_house

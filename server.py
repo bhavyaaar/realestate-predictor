@@ -21,10 +21,12 @@ sys.path.insert(0, str(_root / "price prediction model"))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from agentic_layer import run_opportunity_agent  # type: ignore
-from model import get_forecast_df, respond_to_price_question  # type: ignore
+from collin_chart import render_collin_average_price_chart_png  # type: ignore
+from model import get_df_house, get_forecast_df, respond_to_price_question  # type: ignore
 
 # ── State ──────────────────────────────────────────────────────────────────────
 _forecast_df = None
@@ -101,6 +103,15 @@ def price(req: PriceRequest):
         return {"response": "The price model is still loading. Please try again in a moment."}
     response = respond_to_price_question(req.message, _forecast_df)
     return {"response": response}
+
+
+@app.get("/api/collin-average-chart")
+def collin_average_chart():
+    """PNG: county-level mean historical vs mean forecasted prices over time."""
+    if _forecast_df is None:
+        return Response(status_code=503)
+    png = render_collin_average_price_chart_png(get_df_house(), _forecast_df)
+    return Response(content=png, media_type="image/png")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

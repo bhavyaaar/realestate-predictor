@@ -195,8 +195,8 @@ export function OpportunityCostCalculator() {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [validationMessage, setValidationMessage] = useState("");
   const [priorityWeights, setPriorityWeights] = useState<PriorityWeights>(defaultPriorityWeights);
-  const [primaryDistrict, setPrimaryDistrict] = useState("Frisco ISD");
-  const [secondaryDistrict, setSecondaryDistrict] = useState("Plano ISD");
+  const [primaryDistrict, setPrimaryDistrict] = useState("Frisco");
+  const [secondaryDistrict, setSecondaryDistrict] = useState("Plano");
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
   const cityPremiums: Record<string, number> = {

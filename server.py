@@ -67,10 +67,12 @@ class OpportunityRequest(BaseModel):
     price_weight: float = 25.0
     district_a: Optional[str] = None
     district_b: Optional[str] = None
+    history: list = []
 
 
 class PriceRequest(BaseModel):
     message: str
+    history: list = []
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -99,6 +101,7 @@ def opportunity(req: OpportunityRequest):
         req.price_weight,
         district_a,
         district_b,
+        req.history,
     )
     return {"response": response}
 
@@ -121,7 +124,13 @@ def price(req: PriceRequest):
                 break
 
         if not city:
-            return {"response": "Please specify a city (e.g., Plano, Frisco, McKinney)."}
+            try:
+                print("[graph] generating Collin County average chart")
+                img_bytes = render_collin_average_price_chart_png(get_df_house(), _forecast_df)
+                return Response(content=img_bytes, media_type="image/png")
+            except Exception as e:
+                print("GRAPH ERROR:", e)
+                return {"response": "Graph generation failed. Check backend logs."}
 
         try:
             print(f"[graph] generating graph for {city}")
@@ -138,7 +147,7 @@ def price(req: PriceRequest):
             return {"response": "Graph generation failed. Check backend logs."}
 
     # TEXT MODE
-    response = respond_to_price_question(req.message, _forecast_df)
+    response = respond_to_price_question(req.message, _forecast_df, req.history)
     return {"response": response}
 
 @app.get("/api/collin-average-chart")

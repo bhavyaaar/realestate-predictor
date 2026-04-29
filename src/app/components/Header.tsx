@@ -29,7 +29,7 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
               <h1 className="text-xl text-white font-semibold">
                 Real Estate Analyzer
               </h1>
-              <p className="text-xs text-stone-400">Price Predictor + Opportunity Chatbot</p>
+              <p className="text-xs text-stone-400">Price Predictor + Opportunity Cost</p>
             </div>
           </div>
 
@@ -49,7 +49,7 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
               className={currentPage === "opportunity" ? "bg-stone-700 hover:bg-stone-600" : "text-stone-300 hover:text-white hover:bg-stone-800"}
             >
               <Calculator className="h-4 w-4 mr-2" />
-              Opportunity Chatbot
+              Opportunity Cost
             </Button>
           </nav>
 

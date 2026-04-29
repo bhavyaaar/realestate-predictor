@@ -4,10 +4,7 @@ from typing import TypedDict, Optional, Dict, Any
 from langgraph.graph import StateGraph, END
 
 from comparison_logic import compare_districts
-from explanation_layer import (
-    build_explanation_data,
-    generate_explanation
-)
+
 from realestate_data import load_district_dataframe
 from openai import OpenAI
 
@@ -30,13 +27,18 @@ class AgentState(TypedDict):
     intent: Optional[str]
     result: Optional[Dict[str, Any]]
     response: Optional[str]
+    history: list
 
 
 # ---------------- HELPERS ----------------
 
+COMPARE_KEYWORDS = {"compare", "vs", "versus", "between", "better", "difference"}
+
 def is_greeting(text: str) -> bool:
     return text.strip().lower() in ["hi", "hello", "hey", "yo"]
 
+def is_compare_request(text: str) -> bool:
+    return any(kw in text.lower() for kw in COMPARE_KEYWORDS)
 
 def extract_districts(text: str):
     text = text.lower()
@@ -49,22 +51,25 @@ def route(state: AgentState):
 
     text = state["user_input"].lower()
 
-    # greeting → LLM handles later
     if is_greeting(text):
         state["intent"] = "chat"
         return state
 
     found = extract_districts(text)
 
-    state["district_a"] = found[0] if len(found) > 0 else None
-    state["district_b"] = found[1] if len(found) > 1 else None
+    # Use pre-set districts only when the message is actually a compare request;
+    # for generic chat ("thank you", etc.) ignore the pre-set districts.
+    if is_compare_request(text) or len(found) >= 2:
+        district_a = state.get("district_a") or (found[0] if len(found) > 0 else None)
+        district_b = state.get("district_b") or (found[1] if len(found) > 1 else None)
+        if district_a and district_b:
+            state["district_a"] = district_a
+            state["district_b"] = district_b
+            state["intent"] = "compare"
+            return state
 
-    if state["district_a"] and state["district_b"]:
-        state["intent"] = "compare"
-
-    elif "best" in text or "recommend" in text:
+    if "best" in text or "recommend" in text:
         state["intent"] = "recommend"
-
     else:
         state["intent"] = "chat"
 
@@ -93,39 +98,37 @@ def generate_chat_response(context: Dict[str, Any]) -> str:
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    prompt = f"""
-You are a real estate decision assistant.
+    # Find the most recent comparison result in history for follow-up context
+    last_comparison = ""
+    for msg in reversed(context.get("history", [])):
+        if isinstance(msg, dict) and msg.get("role") == "assistant":
+            content = msg.get("content", "")
+            if content.startswith("Here is the weighted comparison"):
+                last_comparison = content
+                break
 
-You help users compare and understand cities in a natural, conversational way.
+    system_prompt = (
+        "You are a real estate decision assistant. "
+        "You help users compare and understand cities in a natural, conversational way. "
+        "Respond naturally — if the user says thanks, reply warmly. "
+        "If they ask a follow-up question, answer it using the comparison context below. "
+        "Keep replies to 1–3 sentences. No JSON."
+    )
+    if last_comparison:
+        system_prompt += f"\n\nMost recent comparison result:\n{last_comparison}"
 
-Context:
-- intent: {context.get("intent")}
-- user_input: {context.get("user_input")}
-- district_a: {context.get("district_a")}
-- district_b: {context.get("district_b")}
+    messages = [{"role": "system", "content": system_prompt}]
+    for msg in context.get("history", [])[1:]:  # skip intro message
+        if isinstance(msg, dict) and msg.get("role") in ("user", "assistant"):
+            messages.append({"role": msg["role"], "content": msg.get("content", "")})
+    messages.append({"role": "user", "content": context.get("user_input", "")})
 
-Rules:
-- Respond naturally like a helpful human assistant
-- If user says thanks → respond naturally (not scripted)
-- If user asks follow-up → continue contextually
-- If unclear → ask a clarifying question
-- Keep it 1–3 sentences max
-- No JSON
-"""
-
-    response = client.responses.create(
+    response = client.chat.completions.create(
         model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-        input=prompt
+        messages=messages,
     )
 
-    text = ""
-    for item in response.output:
-        if hasattr(item, "content"):
-            for c in item.content:
-                if hasattr(c, "text"):
-                    text += c.text
-
-    return text.strip() or "Let me know how you'd like to compare cities."
+    return response.choices[0].message.content.strip() or "Let me know how you'd like to compare cities."
 
 
 # ---------------- CHAT NODE ----------------
@@ -137,10 +140,47 @@ def chat_node(state: AgentState):
         "user_input": state["user_input"],
         "district_a": state.get("district_a"),
         "district_b": state.get("district_b"),
+        "history": state.get("history", []),
     }
 
     state["response"] = generate_chat_response(context)
     return state
+
+
+# ---------------- COMPARISON FORMATTER ----------------
+
+def _format_comparison(city_a, city_b, result, school_weight, crime_weight, price_weight):
+    sw = school_weight / 100
+    cw = crime_weight / 100
+    pw = price_weight / 100
+
+    school_a_w = result["school_A"] * sw
+    school_b_w = result["school_B"] * sw
+    crime_a_w  = result["crime_A"]  * cw
+    crime_b_w  = result["crime_B"]  * cw
+    price_a_w  = result["price_A"]  * pw
+    price_b_w  = result["price_B"]  * pw
+
+    a = city_a.title()
+    b = city_b.title()
+
+    school_winner, school_loser = (a, b) if school_a_w >= school_b_w else (b, a)
+    crime_winner,  crime_loser  = (a, b) if crime_a_w  >= crime_b_w  else (b, a)
+    price_winner,  price_loser  = (a, b) if price_a_w  >= price_b_w  else (b, a)
+
+    overall_a = result["overall_A"]
+    overall_b = result["overall_B"]
+    overall_winner = a if overall_a >= overall_b else b
+
+    return "\n".join([
+        "Here is the weighted comparison using your current priorities.",
+        f"Given your school weight, {school_winner}'s school contribution is stronger than {school_loser}'s by {abs(school_a_w - school_b_w):.3f} weighted points.",
+        f"Given your safety weight, {crime_winner}'s safety contribution is stronger than {crime_loser}'s by {abs(crime_a_w - crime_b_w):.3f} weighted points.",
+        f"Given your affordability weight, {price_winner}'s affordability contribution is stronger than {price_loser}'s by {abs(price_a_w - price_b_w):.3f} weighted points.",
+        f"Weighted scoring used: School {school_weight:.0f}%, Safety {crime_weight:.0f}%, Affordability {price_weight:.0f}%",
+        f"Weighted totals -> {a}: {overall_a:.3f} (school {school_a_w:.3f}, safety {crime_a_w:.3f}, affordability {price_a_w:.3f}); {b}: {overall_b:.3f} (school {school_b_w:.3f}, safety {crime_b_w:.3f}, affordability {price_b_w:.3f}).",
+        f"Based on these weights, {overall_winner} is the stronger overall match by {abs(overall_a - overall_b):.3f} points.",
+    ])
 
 
 # ---------------- RESPONDER ----------------
@@ -155,8 +195,7 @@ def respond(state: AgentState):
 
         # ---------------- COMPARE ----------------
         if state["intent"] == "compare":
-
-            data = build_explanation_data(
+            state["response"] = _format_comparison(
                 state["district_a"],
                 state["district_b"],
                 state["result"],
@@ -164,19 +203,6 @@ def respond(state: AgentState):
                 state["crime_weight"],
                 state["price_weight"],
             )
-
-            explanation = generate_explanation(data)
-
-            # LLM structured output ONLY (no hardcoding)
-            state["response"] = "\n".join([
-                explanation.get("tldr", ""),
-                explanation.get("school_sentence", ""),
-                explanation.get("safety_sentence", ""),
-                explanation.get("affordability_sentence", ""),
-                explanation.get("overall_sentence", ""),
-                explanation.get("best_for", ""),
-            ]).strip()
-
             return state
 
         # fallback → still LLM
@@ -233,6 +259,7 @@ def run_opportunity_agent(
     price_weight,
     district_a=None,
     district_b=None,
+    history=None,
 ):
 
     state = {
@@ -245,6 +272,7 @@ def run_opportunity_agent(
         "intent": None,
         "result": None,
         "response": None,
+        "history": history or [],
     }
 
     result = agent.invoke(state)

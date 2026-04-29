@@ -589,12 +589,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
-    const { error } = await supabase.from("saved_user_info").insert({
-      user_id: user.id,
-      title,
-      content,
-      category,
-    });
+    const doInsert = () =>
+      supabase.from("saved_user_info").insert({
+        user_id: user.id,
+        title,
+        content,
+        category,
+      });
+
+    let { error } = await doInsert();
+
+    // Transient Supabase auth lock conflict — retry once after a short delay
+    if (error?.message?.includes("Lock")) {
+      await new Promise((r) => setTimeout(r, 400));
+      ({ error } = await doInsert());
+    }
 
     if (error) {
       alert(error.message);

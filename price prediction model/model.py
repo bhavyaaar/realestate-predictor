@@ -141,8 +141,8 @@ for city in cities:
     # Filter the dataset for the current city and sort by date
     city_df = df_house[df_house['RegionName'] == city].sort_values('Date').copy()
     history = city_df.copy()
-    # Get the most recent date available in the dataset
-    last_date = history['Date'].max()
+    # Cap at Jan 2026 so the 6-month forecast runs Feb→Jul 2026 (matching the city graphs)
+    last_date = min(history['Date'].max(), pd.Timestamp('2026-01-31'))
     # Store the last 12 months of prices to create lag features
     price_history = list(history['House_Price'].tail(12))
     # Predict prices for the next 6 months
@@ -202,17 +202,15 @@ import re
 from dateutil.parser import parse
 from typing import Optional
 
-def _gemini_fallback(user_question: str, cities_list, history: list = []) -> str:
-    """Use Gemini to handle general / non-price questions with conversation history."""
+def _openai_fallback(user_question: str, cities_list, history: list = []) -> str:
+    """Use OpenAI to handle general / non-price questions with conversation history."""
     try:
-        #api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        from openai import OpenAI
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             return "I can only answer questions about home prices in Collin County cities. Try asking about a specific city!"
 
-        from google import genai
-        from google.genai import types
-        client = genai.Client(api_key=api_key)
+        client = OpenAI(api_key=api_key)
         model_name = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
         system_context = (
@@ -224,23 +222,17 @@ def _gemini_fallback(user_question: str, cities_list, history: list = []) -> str
             "Keep responses short and conversational."
         )
 
-        # Build conversation history for Gemini (skip the initial welcome message)
-        contents = []
+        messages = [{"role": "system", "content": system_context}]
         for msg in history[1:]:  # skip the assistant intro message
-            role = "user" if msg.get("role") == "user" else "model"
-            contents.append(types.Content(role=role, parts=[types.Part(text=msg.get("content", ""))]))
-        # Add current user message
-        contents.append(types.Content(role="user", parts=[types.Part(text=user_question)]))
+            role = "user" if msg.get("role") == "user" else "assistant"
+            messages.append({"role": role, "content": msg.get("content", "")})
+        messages.append({"role": "user", "content": user_question})
 
-        response = client.models.generate_content(
-            model=model_name,
-            config=types.GenerateContentConfig(system_instruction=system_context),
-            contents=contents,
-        )
-        return response.text.strip()
+        response = client.chat.completions.create(model=model_name, messages=messages)
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[Gemini error] {type(e).__name__}: {e}")
-        return f"[DEBUG] Gemini error: {type(e).__name__}: {e}"
+        print(f"[OpenAI error] {type(e).__name__}: {e}")
+        return f"[DEBUG] OpenAI error: {type(e).__name__}: {e}"
 
 
 _MONTH_WORD_TO_NUM = {
@@ -399,8 +391,7 @@ def respond_to_price_question(user_question, forecast_df, history: list = []):
     matched_cities = _cities_mentioned_ordered(user_question, cities)
 
     if not matched_cities:
-        # Fall back to Gemini with full conversation history
-        return _gemini_fallback(user_question, list(cities), history)
+        return _openai_fallback(user_question, list(cities), history)
     
 
     horizon_n = _parse_next_n_months_horizon(user_question)

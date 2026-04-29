@@ -103,7 +103,7 @@ def plot_city_graph(city):
     plt.title(f"Predicted Home Prices - {city}")
     plt.xlabel("Month")
     plt.ylabel("Price ($)")
-    plt.xticks(rotation=45)
+    plt.xticks(df["Date"], df["Date"].dt.strftime("%Y-%m"), rotation=45)
     plt.tight_layout()
 
     buf = io.BytesIO()

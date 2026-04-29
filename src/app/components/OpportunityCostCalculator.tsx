@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
-import { Bot, MessageSquare, Plus, Send, Trash2, User } from "lucide-react";
+import { Bot, Bookmark, MessageSquare, Plus, Send, Trash2, User } from "lucide-react";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Slider } from "./ui/slider";
@@ -173,12 +173,11 @@ function rebalancePriorityWeights(
 
 export function OpportunityCostCalculator() {
   const { saveInfo, user, isGuest } = useAuth();
+  const canSave = !!user && !isGuest;
   const [chatStorageMode, setChatStorageMode] = useState<"supabase" | "local">("local");
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     const raw = localStorage.getItem(CHAT_STORAGE_KEY);
-    if (!raw) {
-      return [createSession()];
-    }
+    if (!raw) return [createSession()];
     try {
       const parsed = JSON.parse(raw) as ChatSession[];
       return parsed.length > 0 ? parsed : [createSession()];
@@ -197,7 +196,9 @@ export function OpportunityCostCalculator() {
   const [priorityWeights, setPriorityWeights] = useState<PriorityWeights>(defaultPriorityWeights);
   const [primaryDistrict, setPrimaryDistrict] = useState("Frisco");
   const [secondaryDistrict, setSecondaryDistrict] = useState("Plano");
+  const [hasCompared, setHasCompared] = useState(false);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cityPremiums: Record<string, number> = {
     plano: 1,
@@ -223,133 +224,59 @@ export function OpportunityCostCalculator() {
   useEffect(() => {
     if (chatStorageMode === "supabase") return;
     localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(sessions));
-  }, [sessions, user, isGuest, chatStorageMode]);
+  }, [sessions, chatStorageMode]);
 
   useEffect(() => {
-    const hydrateChat = async () => {
-      const hydrateLocal = () => {
-        const raw = localStorage.getItem(CHAT_STORAGE_KEY);
-        if (!raw) {
-          const fallback = [createSession()];
-          setSessions(fallback);
-          setActiveSessionId(fallback[0].id);
-          return;
-        }
-        try {
-          const parsed = JSON.parse(raw) as ChatSession[];
-          const next = parsed.length > 0 ? parsed : [createSession()];
-          setSessions(next);
-          setActiveSessionId(next[0].id);
-        } catch {
-          const fallback = [createSession()];
-          setSessions(fallback);
-          setActiveSessionId(fallback[0].id);
-        }
-      };
+    const hydrateLocal = () => {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (!raw) { const s = [createSession()]; setSessions(s); setActiveSessionId(s[0].id); return; }
+      try {
+        const parsed = JSON.parse(raw) as ChatSession[];
+        const next = parsed.length > 0 ? parsed : [createSession()];
+        setSessions(next); setActiveSessionId(next[0].id);
+      } catch { const s = [createSession()]; setSessions(s); setActiveSessionId(s[0].id); }
+    };
 
-      if (!user || isGuest) {
-        setChatStorageMode("local");
-        hydrateLocal();
-        return;
-      }
+    const hydrateChat = async () => {
+      if (!user || isGuest) { setChatStorageMode("local"); hydrateLocal(); return; }
 
       setChatStorageMode("supabase");
       const { data: sessionRows, error: sessionError } = await supabase
-        .from("chat_sessions")
-        .select("id,title,created_at,updated_at")
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false });
+        .from("chat_sessions").select("id,title,created_at,updated_at")
+        .eq("user_id", user.id).order("updated_at", { ascending: false });
 
-      if (sessionError) {
-        console.warn("Falling back to local chat storage:", sessionError.message);
-        setChatStorageMode("local");
-        hydrateLocal();
-        return;
-      }
+      if (sessionError) { console.warn("Falling back to local:", sessionError.message); setChatStorageMode("local"); hydrateLocal(); return; }
 
       if (!sessionRows || sessionRows.length === 0) {
         const seed = createSession();
-        const { error: createSessionError } = await supabase.from("chat_sessions").insert({
-          id: seed.id,
-          user_id: user.id,
-          title: seed.title,
-          created_at: seed.createdAt,
-          updated_at: seed.updatedAt,
-        });
-
-        if (createSessionError) {
-          console.error("Failed to create initial chat session:", createSessionError.message);
-          return;
-        }
-
+        await supabase.from("chat_sessions").insert({ id: seed.id, user_id: user.id, title: seed.title, created_at: seed.createdAt, updated_at: seed.updatedAt });
         const intro = seed.messages[0];
-        const { error: introError } = await supabase.from("chat_messages").insert({
-          id: intro.id,
-          session_id: seed.id,
-          user_id: user.id,
-          role: intro.role,
-          content: intro.content,
-          created_at: intro.timestamp,
-        });
-
-        if (introError) {
-          console.error("Failed to create initial chat message:", introError.message);
-        }
-
-        setSessions([seed]);
-        setActiveSessionId(seed.id);
-        return;
+        await supabase.from("chat_messages").insert({ id: intro.id, session_id: seed.id, user_id: user.id, role: intro.role, content: intro.content, created_at: intro.timestamp });
+        setSessions([seed]); setActiveSessionId(seed.id); return;
       }
 
-      const sessionIds = sessionRows.map((row) => row.id);
+      const sessionIds = sessionRows.map((r) => r.id);
       const { data: messageRows, error: messageError } = await supabase
-        .from("chat_messages")
-        .select("id,session_id,role,content,created_at")
-        .eq("user_id", user.id)
-        .in("session_id", sessionIds)
-        .order("created_at", { ascending: true });
+        .from("chat_messages").select("id,session_id,role,content,created_at")
+        .eq("user_id", user.id).in("session_id", sessionIds).order("created_at", { ascending: true });
 
-      if (messageError) {
-        console.warn("Falling back to local chat storage:", messageError.message);
-        setChatStorageMode("local");
-        hydrateLocal();
-        return;
-      }
+      if (messageError) { console.warn("Falling back to local:", messageError.message); setChatStorageMode("local"); hydrateLocal(); return; }
 
       const bySession = new Map<string, ChatMessage[]>();
       for (const row of messageRows || []) {
         const existing = bySession.get(row.session_id) || [];
-        existing.push({
-          id: row.id,
-          role: row.role,
-          content: row.content,
-          timestamp: row.created_at,
-        });
+        existing.push({ id: row.id, role: row.role, content: row.content, timestamp: row.created_at });
         bySession.set(row.session_id, existing);
       }
 
-      const normalized: ChatSession[] = sessionRows.map((row) => {
-        const messages = bySession.get(row.id) || [];
-        return {
-          id: row.id,
-          title: row.title,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-          messages: messages.length > 0
-            ? messages
-            : [
-                {
-                  id: crypto.randomUUID(),
-                  role: "assistant",
-                  content: assistantIntro,
-                  timestamp: row.created_at,
-                },
-              ],
-        };
-      });
+      const normalized: ChatSession[] = sessionRows.map((row) => ({
+        id: row.id, title: row.title, createdAt: row.created_at, updatedAt: row.updated_at,
+        messages: bySession.get(row.id)?.length
+          ? bySession.get(row.id)!
+          : [{ id: crypto.randomUUID(), role: "assistant", content: assistantIntro, timestamp: row.created_at }],
+      }));
 
-      setSessions(normalized);
-      setActiveSessionId(normalized[0].id);
+      setSessions(normalized); setActiveSessionId(normalized[0].id);
     };
 
     void hydrateChat();
@@ -361,43 +288,32 @@ export function OpportunityCostCalculator() {
     }
   }, [activeSession?.messages, isTyping]);
 
+  // Reset hasCompared when the active session changes
+  useEffect(() => {
+    setHasCompared(false);
+  }, [activeSessionId]);
+
+  // Auto-re-compare when slider weights change (debounced), but only after the first compare
+  useEffect(() => {
+    if (!hasCompared) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      sendMessage(`Compare ${primaryDistrict} vs ${secondaryDistrict}.`);
+    }, 800);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [priorityWeights]);
+
   const createNewChat = async () => {
     const next = createSession();
-
     setSessions((prev) => [next, ...prev]);
     setActiveSessionId(next.id);
     setDraft("");
-
     if (user && !isGuest && chatStorageMode === "supabase") {
-      const { error: sessionError } = await supabase.from("chat_sessions").insert({
-        id: next.id,
-        user_id: user.id,
-        title: next.title,
-        created_at: next.createdAt,
-        updated_at: next.updatedAt,
-      });
-
-      if (sessionError) {
-        console.warn("Switching chat storage to local:", sessionError.message);
-        setChatStorageMode("local");
-      }
-
+      await supabase.from("chat_sessions").insert({ id: next.id, user_id: user.id, title: next.title, created_at: next.createdAt, updated_at: next.updatedAt });
       const intro = next.messages[0];
-      if (!sessionError) {
-        const { error: introError } = await supabase.from("chat_messages").insert({
-          id: intro.id,
-          session_id: next.id,
-          user_id: user.id,
-          role: intro.role,
-          content: intro.content,
-          created_at: intro.timestamp,
-        });
-
-        if (introError) {
-          console.warn("Switching chat storage to local:", introError.message);
-          setChatStorageMode("local");
-        }
-      }
+      await supabase.from("chat_messages").insert({ id: intro.id, session_id: next.id, user_id: user.id, role: intro.role, content: intro.content, created_at: intro.timestamp });
     }
   };
 
@@ -408,46 +324,20 @@ export function OpportunityCostCalculator() {
 
   const deleteChat = async (id: string) => {
     if (user && !isGuest && chatStorageMode === "supabase") {
-      const { error } = await supabase.from("chat_sessions").delete().eq("id", id).eq("user_id", user.id);
-      if (error) {
-        console.warn("Switching chat storage to local:", error.message);
-        setChatStorageMode("local");
-      }
+      await supabase.from("chat_sessions").delete().eq("id", id).eq("user_id", user.id);
     }
-
-    const remaining = sessions.filter((session) => session.id !== id);
+    const remaining = sessions.filter((s) => s.id !== id);
     if (remaining.length === 0) {
       const fallback = createSession();
-
       if (user && !isGuest && chatStorageMode === "supabase") {
-        const { error: sessionError } = await supabase.from("chat_sessions").insert({
-          id: fallback.id,
-          user_id: user.id,
-          title: fallback.title,
-          created_at: fallback.createdAt,
-          updated_at: fallback.updatedAt,
-        });
-        if (!sessionError) {
-          const intro = fallback.messages[0];
-          await supabase.from("chat_messages").insert({
-            id: intro.id,
-            session_id: fallback.id,
-            user_id: user.id,
-            role: intro.role,
-            content: intro.content,
-            created_at: intro.timestamp,
-          });
-        }
+        await supabase.from("chat_sessions").insert({ id: fallback.id, user_id: user.id, title: fallback.title, created_at: fallback.createdAt, updated_at: fallback.updatedAt });
+        const intro = fallback.messages[0];
+        await supabase.from("chat_messages").insert({ id: intro.id, session_id: fallback.id, user_id: user.id, role: intro.role, content: intro.content, created_at: intro.timestamp });
       }
-
-      setSessions([fallback]);
-      setActiveSessionId(fallback.id);
-      return;
+      setSessions([fallback]); setActiveSessionId(fallback.id); return;
     }
     setSessions(remaining);
-    if (activeSessionId === id) {
-      setActiveSessionId(remaining[0].id);
-    }
+    if (activeSessionId === id) setActiveSessionId(remaining[0].id);
   };
 
   const handleInputChange = (field: keyof OpportunityInputs, value: string) => {
@@ -604,6 +494,9 @@ export function OpportunityCostCalculator() {
       let assistantContent = "Sorry, I couldn't reach the analysis backend. Please make sure the server is running.";
 
       try {
+        const currentMessages = sessions.find(s => s.id === targetSessionId)?.messages ?? [];
+        const history = currentMessages.map(m => ({ role: m.role, content: m.content }));
+
         const res = await fetch("/api/opportunity", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -614,6 +507,7 @@ export function OpportunityCostCalculator() {
             price_weight: priorityWeights.affordability,
             district_a: primaryDistrict || undefined,
             district_b: secondaryDistrict || undefined,
+            history,
           }),
         });
         if (res.ok) {
@@ -637,53 +531,22 @@ export function OpportunityCostCalculator() {
         const now = new Date().toISOString();
         return prev.map((session) =>
           session.id === targetSessionId
-            ? {
-                ...session,
-                updatedAt: now,
-                messages: [...session.messages, assistantReply],
-              }
+            ? { ...session, updatedAt: now, messages: [...session.messages, assistantReply] }
             : session,
         );
       });
 
       if (user && !isGuest && chatStorageMode === "supabase") {
-        const nextTitle = sessionTitle || activeSession.title;
         const now = new Date().toISOString();
-
-        const { error: updateError } = await supabase
-          .from("chat_sessions")
-          .update({ title: nextTitle, updated_at: now })
-          .eq("id", targetSessionId)
-          .eq("user_id", user.id);
-
-        if (updateError) {
-          console.error("Failed to update chat session:", updateError.message);
-          return;
-        }
-
-        const { error: insertError } = await supabase.from("chat_messages").insert([
-          {
-            id: userMessage.id,
-            session_id: targetSessionId,
-            user_id: user.id,
-            role: userMessage.role,
-            content: userMessage.content,
-            created_at: userMessage.timestamp,
-          },
-          {
-            id: assistantReply.id,
-            session_id: targetSessionId,
-            user_id: user.id,
-            role: assistantReply.role,
-            content: assistantReply.content,
-            created_at: assistantReply.timestamp,
-          },
+        await supabase.from("chat_sessions")
+          .update({ title: sessionTitle || activeSession.title, updated_at: now })
+          .eq("id", targetSessionId).eq("user_id", user.id);
+        await supabase.from("chat_messages").insert([
+          { id: userMessage.id, session_id: targetSessionId, user_id: user.id, role: userMessage.role, content: userMessage.content, created_at: userMessage.timestamp },
+          { id: assistantReply.id, session_id: targetSessionId, user_id: user.id, role: assistantReply.role, content: assistantReply.content, created_at: assistantReply.timestamp },
         ]);
-
-        if (insertError) {
-          console.error("Failed to store chat messages:", insertError.message);
-        }
       }
+
     })();
   };
 
@@ -692,15 +555,8 @@ export function OpportunityCostCalculator() {
   };
 
   const handleCompareDistricts = () => {
-    const comparePrompt = [
-      `Compare ${primaryDistrict} vs ${secondaryDistrict}.`,
-      `School quality ${priorityWeights.schoolQuality}%.`,
-      `Safety ${priorityWeights.safety}%.`,
-      `Affordability ${priorityWeights.affordability}%.`,
-      "This is a frontend configuration request; backend scoring will be connected later.",
-    ].join(" ");
-
-    sendMessage(comparePrompt);
+    setHasCompared(true);
+    sendMessage(`Compare ${primaryDistrict} vs ${secondaryDistrict}.`);
   };
 
   return (
@@ -835,7 +691,7 @@ export function OpportunityCostCalculator() {
               <Bot className="h-5 w-5" />
               Oppurtunity Cost Chatbot
             </CardTitle>
-            <p className="mt-2 text-sm leading-relaxed text-stone-300">Describe your situation and our backend will return an opportunity cost analysis.</p>
+            <p className="mt-2 text-sm leading-relaxed text-stone-300">Compare districts and I'll break down the opportunity cost based on your priorities.</p>
             {opportunityResult && (
               <div className="rounded-md bg-white/15 p-3 text-sm backdrop-blur">
                 <div className="grid grid-cols-1 gap-1 md:grid-cols-3">
@@ -848,7 +704,9 @@ export function OpportunityCostCalculator() {
           </CardHeader>
 
           <CardContent ref={scrollerRef} className="flex-1 overflow-y-auto p-5 space-y-4 bg-[#faf6f0]">
-            {activeSession?.messages.map((message) => (
+            {activeSession?.messages.map((message) => {
+              const isComparison = message.role === "assistant" && message.content.startsWith("Here is the weighted comparison");
+              return (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] rounded-xl p-3 ${message.role === "user" ? "bg-stone-800 text-white" : "bg-white border text-stone-800"}`}>
                   <div className="mb-1 flex items-center gap-2 text-xs opacity-80">
@@ -858,9 +716,19 @@ export function OpportunityCostCalculator() {
                     <span>{new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  {isComparison && canSave && (
+                    <button
+                      onClick={() => void saveInfo(`${primaryDistrict} vs ${secondaryDistrict} comparison`, message.content, "opportunity-cost")}
+                      className="mt-2 flex items-center gap-1 text-xs text-stone-500 hover:text-amber-700 transition-colors"
+                    >
+                      <Bookmark className="h-3 w-3" />
+                      Save to profile
+                    </button>
+                  )}
                 </div>
               </div>
-            ))}
+              );
+            })}
             {isTyping && (
               <div className="flex justify-start">
                 <div className="rounded-xl border bg-white px-3 py-2 text-sm text-gray-600">Advisor is typing...</div>

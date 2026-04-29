@@ -12,6 +12,7 @@ type ChatMessage = {
   role: ChatRole;
   content: string;
   createdAt: string;
+  image?: string;
 };
 
 type PredictionSession = {
@@ -152,38 +153,66 @@ export function CostEstimator() {
     setIsTyping(true);
 
     void (async () => {
-      let assistantContent = "Sorry, I couldn't reach the price prediction backend. Please make sure the server is running.";
+       try {
+    const res = await fetch("/api/price", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: trimmed }),
+    });
 
-      try {
-        const res = await fetch("/api/price", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: trimmed }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          assistantContent = data.response || assistantContent;
-        }
-      } catch {
-        // network error — fallback message already set
-      }
+    const contentType = res.headers.get("content-type");
 
-      const assistantReply: ChatMessage = {
+    let assistantReply: ChatMessage;
+
+    if (contentType?.includes("image/png")) {
+      const blob = await res.blob();
+      const imageUrl = URL.createObjectURL(blob);
+
+      assistantReply = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: assistantContent,
+        content: "",
+        image: imageUrl,
         createdAt: new Date().toISOString(),
       };
+    } else {
+      const data = await res.json();
 
-      setIsTyping(false);
+      assistantReply = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: data.response,
+        createdAt: new Date().toISOString(),
+      };
+    }
 
-      setSessions((prev) =>
-        prev.map((session) =>
-          session.id === sessionId
-            ? { ...session, messages: [...session.messages, assistantReply] }
-            : session,
-        ),
-      );
+    setIsTyping(false);
+
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? { ...session, messages: [...session.messages, assistantReply] }
+          : session,
+      ),
+    );
+  } catch (err) {
+    setIsTyping(false);
+
+    const errorReply: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "Backend error — check if FastAPI server is running.",
+      createdAt: new Date().toISOString(),
+    };
+
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? { ...session, messages: [...session.messages, errorReply] }
+          : session,
+      ),
+    );
+  }
     })();
   };
 
@@ -272,7 +301,16 @@ export function CostEstimator() {
                     <span>•</span>
                     <span>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  {message.content && (
+  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+)}
+
+{message.image && (
+  <img
+    src={message.image}
+    className="mt-2 rounded-lg border max-w-full"
+  />
+)}
                 </div>
               </div>
             ))}

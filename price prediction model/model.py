@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
+from graphs import plot_city_graph
 
 # load data set
 file_path = os.path.join("data", "zillow_city.csv")
@@ -385,6 +386,7 @@ def _cities_mentioned_ordered(user_question: str, cities) -> list:
     return [c for _, c in hits]
 
 
+
 def respond_to_price_question(user_question, forecast_df, history: list = []):
     """
     Respond to a user question about forecasted home prices.
@@ -399,6 +401,7 @@ def respond_to_price_question(user_question, forecast_df, history: list = []):
     if not matched_cities:
         # Fall back to Gemini with full conversation history
         return _gemini_fallback(user_question, list(cities), history)
+    
 
     horizon_n = _parse_next_n_months_horizon(user_question)
     wants_calendar_now = _wants_this_or_current_calendar_month(user_question)

@@ -15,6 +15,9 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Optional
 import asyncio
+import base64
+
+
 
 # Make the backend modules importable
 _root = Path(__file__).parent
@@ -26,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from graphs import plot_city_graph # type: ignore
 from agentic_layer import run_opportunity_agent  # type: ignore
 from collin_chart import render_collin_average_price_chart_png  # type: ignore
 from model import get_df_house, get_forecast_df, respond_to_price_question  # type: ignore
@@ -102,10 +106,40 @@ def opportunity(req: OpportunityRequest):
 @app.post("/api/price")
 def price(req: PriceRequest):
     if _forecast_df is None:
-        return {"response": "The price model is still loading. Please try again in a moment."}
+        return {"response": "Model loading..."}
+
+    message = req.message.lower()
+
+    # GRAPH MODE
+    if "graph" in message:
+
+        city = None
+
+        for c in _forecast_df["City"].unique():
+            if re.search(rf"\b{re.escape(c.lower())}\b", message):
+                city = c
+                break
+
+        if not city:
+            return {"response": "Please specify a city (e.g., Plano, Frisco, McKinney)."}
+
+        try:
+            print(f"[graph] generating graph for {city}")
+
+            img_bytes = plot_city_graph(city)
+
+            if not img_bytes:
+                return {"response": "No graph available for that city."}
+
+            return Response(content=img_bytes, media_type="image/png")
+
+        except Exception as e:
+            print("GRAPH ERROR:", e)
+            return {"response": "Graph generation failed. Check backend logs."}
+
+    # TEXT MODE
     response = respond_to_price_question(req.message, _forecast_df)
     return {"response": response}
-
 
 @app.get("/api/collin-average-chart")
 def collin_average_chart():

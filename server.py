@@ -6,7 +6,9 @@ Endpoints:
   POST /api/price        — Price prediction chatbot
   GET  /api/health       — Health check
 """
-
+from dotenv import load_dotenv
+load_dotenv()
+import os
 import sys
 import re
 from pathlib import Path

@@ -65,11 +65,11 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
                   <div className="text-xs text-stone-300">Signed in</div>
                 </div>
               </div>
-              <Button variant="ghost" onClick={() => onNavigate("profile")} className="text-white hover:bg-stone-800">
+              <Button variant="ghost" onClick={() => onNavigate("profile")} className="text-stone-300 hover:text-white hover:bg-stone-700">
                 <UserCircle className="h-4 w-4 mr-2" />
                 Profile
               </Button>
-              <Button variant="outline" onClick={handleLogout} className="border-stone-600 bg-stone-800 text-white hover:bg-stone-700">
+              <Button variant="outline" onClick={handleLogout} className="border-stone-600 bg-stone-800 text-white hover:bg-stone-600 hover:border-stone-500">
                 <LogOut className="h-4 w-4 mr-2" />
                 Log Out
               </Button>

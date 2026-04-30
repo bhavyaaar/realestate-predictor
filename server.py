@@ -84,6 +84,10 @@ def _normalize_district(name: Optional[str]) -> Optional[str]:
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
+@app.get("/")
+def root():
+    return {"message": "API is running"}
+
 @app.get("/api/health")
 def health():
     return {"status": "ok", "price_model_ready": _forecast_df is not None}

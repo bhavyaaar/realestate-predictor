@@ -58,6 +58,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.api_route("/", methods=["GET", "HEAD"])
+async def root():
+    return {"message": "API is running"}
+
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
 class OpportunityRequest(BaseModel):

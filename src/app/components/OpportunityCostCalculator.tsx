@@ -498,6 +498,7 @@ export function OpportunityCostCalculator() {
         const currentMessages = sessions.find(s => s.id === targetSessionId)?.messages ?? [];
         const history = currentMessages.map(m => ({ role: m.role, content: m.content }));
 
+        console.log("API_BASE_URL:", API_BASE_URL);
         const res = await fetch(`${API_BASE_URL}/api/opportunity`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

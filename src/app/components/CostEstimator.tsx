@@ -5,6 +5,7 @@ import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Bookmark, Bot, MessageSquare, Plus, Send, Trash2, User } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 type ChatRole = "user" | "assistant";
 
@@ -147,7 +148,7 @@ export function CostEstimator() {
         const currentMessages = sessions.find(s => s.id === sessionId)?.messages ?? [];
         const history = currentMessages.map(m => ({ role: m.role, content: m.content }));
 
-    const res = await fetch("/api/price", {
+    const res = await fetch(`${API_BASE_URL}/api/price`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: trimmed, history }),

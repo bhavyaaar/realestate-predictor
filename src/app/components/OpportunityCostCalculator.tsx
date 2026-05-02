@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Slider } from "./ui/slider";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabaseClient";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 type ChatMessage = {
   id: string;
@@ -497,7 +498,7 @@ export function OpportunityCostCalculator() {
         const currentMessages = sessions.find(s => s.id === targetSessionId)?.messages ?? [];
         const history = currentMessages.map(m => ({ role: m.role, content: m.content }));
 
-        const res = await fetch("/api/opportunity", {
+        const res = await fetch(`${API_BASE_URL}/api/opportunity`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

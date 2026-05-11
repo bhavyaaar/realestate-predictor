@@ -605,16 +605,16 @@ export function OpportunityCostCalculator() {
           <Card className="rounded-[24px] bg-white border border-stone-300 shadow-md">
             <CardHeader className="pb-2">
               <CardTitle className="text-stone-700 text-sm font-semibold tracking-wide uppercase">
-                Compare Districts
+                Compare Cities
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="primary-district" className="text-xs text-stone-500">District A</Label>
+                  <Label htmlFor="primary-district" className="text-xs text-stone-500">City A</Label>
                   <Select value={primaryDistrict} onValueChange={setPrimaryDistrict}>
                     <SelectTrigger id="primary-district" className="border-stone-300 bg-stone-50 text-stone-800">
-                      <SelectValue placeholder="Select district" />
+                      <SelectValue placeholder="Select city" />
                     </SelectTrigger>
                     <SelectContent>
                       {districtOptions.map((district) => (
@@ -627,10 +627,10 @@ export function OpportunityCostCalculator() {
                 <span className="pt-6 text-sm font-semibold text-stone-500">vs</span>
 
                 <div className="space-y-2">
-                  <Label htmlFor="secondary-district" className="text-xs text-stone-500">District B</Label>
+                  <Label htmlFor="secondary-district" className="text-xs text-stone-500">City B</Label>
                   <Select value={secondaryDistrict} onValueChange={setSecondaryDistrict}>
                     <SelectTrigger id="secondary-district" className="border-stone-300 bg-stone-50 text-stone-800">
-                      <SelectValue placeholder="Select district" />
+                      <SelectValue placeholder="Select city" />
                     </SelectTrigger>
                     <SelectContent>
                       {districtOptions.map((district) => (
@@ -646,7 +646,7 @@ export function OpportunityCostCalculator() {
                 disabled={primaryDistrict === secondaryDistrict || isTyping}
                 className="w-full bg-white text-stone-900 border border-stone-300 hover:bg-stone-50"
               >
-                Compare districts
+                Compare cities
               </Button>
             </CardContent>
           </Card>
@@ -693,7 +693,7 @@ export function OpportunityCostCalculator() {
               <Bot className="h-5 w-5" />
               Oppurtunity Cost Chatbot
             </CardTitle>
-            <p className="mt-2 text-sm leading-relaxed text-stone-300">Compare districts and I'll break down the opportunity cost based on your priorities.</p>
+            <p className="mt-2 text-sm leading-relaxed text-stone-300">Compare cities and I'll break down the opportunity cost based on your priorities.</p>
             {opportunityResult && (
               <div className="rounded-md bg-white/15 p-3 text-sm backdrop-blur">
                 <div className="grid grid-cols-1 gap-1 md:grid-cols-3">
@@ -741,7 +741,7 @@ export function OpportunityCostCalculator() {
           <div className="border-t bg-white p-5">
             <div className="flex gap-2">
               <Input
-                placeholder="Example: compare Frisco ISD vs Plano ISD with school quality weighted highest"
+                placeholder="Example: compare Frisco vs Plano with school quality weighted highest"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {

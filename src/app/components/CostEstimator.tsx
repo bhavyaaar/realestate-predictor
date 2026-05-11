@@ -266,7 +266,7 @@ export function CostEstimator() {
               <Bot className="h-5 w-5" />
               Price Predictor Chatbot
             </CardTitle>
-            <p className="mt-2 text-sm leading-relaxed text-stone-300">Enter a city and property details to get a predicted price range.</p>
+            <p className="mt-2 text-sm leading-relaxed text-stone-300">Enter a city and the price prediction chatbot will provide a median home price forecast from anytime between February 2026 to July 2026.</p>
           </CardHeader>
 
           <CardContent ref={scrollerRef} className="flex-1 overflow-y-auto p-5 space-y-4 bg-[#faf6f0]">
